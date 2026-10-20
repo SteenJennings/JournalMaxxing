@@ -106,7 +106,7 @@ class Summarizer: ObservableObject {
         let lower = text.lowercased()
         var t: [String] = []
         if lower.contains("work") || lower.contains("promo") || lower.contains("ship") || lower.contains("meeting") { t.append("work") }
-        if lower.contains("hike") || lower.contains("trip") || lower.contains("beach") || lower.contains("travel") { t.append("trip") }
+        if lower.contains("hik") || lower.contains("trip") || lower.contains("beach") || lower.contains("travel") { t.append("trip") }
         if lower.contains("family") || lower.contains("mom") || lower.contains("dad") { t.append("family") }
         if lower.contains("code") || lower.contains("app") || lower.contains("build") { t.append("building") }
         if lower.contains("dinner") || lower.contains("lunch") || lower.contains("breakfast") || lower.contains("ate ") { t.append("dinner") }
