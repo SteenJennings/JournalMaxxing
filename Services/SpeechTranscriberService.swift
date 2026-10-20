@@ -70,11 +70,10 @@ final class SpeechTranscriberService: ObservableObject {
 
             let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
             inputContinuation = continuation
-            try session.start(inputSequence: stream)
+            try await session.start(inputSequence: stream)
 
             // Live results.
             resultsTask = Task { [weak self] in
-                guard let module else { return }
                 do {
                     for try await result in module.results {
                         let text = String(result.text.characters)
