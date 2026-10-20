@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "make build",
+      "group": "build"
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "make test",
+      "group": "test"
+    },
+    {
+      "label": "gen",
+      "type": "shell",
+      "command": "xcodegen generate"
+    }
+  ]
+}

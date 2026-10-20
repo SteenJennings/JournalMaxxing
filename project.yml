@@ -1,0 +1,41 @@
+name: Dayline
+options:
+  bundleIdPrefix: com.steenjennings
+  xcodeVersion: "26.0"
+  deploymentTarget:
+    iOS: "26.0"
+targets:
+  Dayline:
+    type: application
+    platform: iOS
+    sources: [Models, Services, Views, App]
+    info:
+      path: Info.plist
+      properties:
+        UILaunchScreen: {}
+        NSPhotoLibraryUsageDescription: "Dayline shows photos and videos from the day you are journaling about, and suggests the best ones for your scrapbook. Everything stays on this device."
+        NSMicrophoneUsageDescription: "Dayline records your voice so it can transcribe your journal entry on-device."
+        NSSpeechRecognitionUsageDescription: "Dayline transcribes your journal entries on-device. The app does not send your audio to a server."
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
+        PRODUCT_BUNDLE_IDENTIFIER: com.steenjennings.dayline
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - sdk: Photos.framework
+      - sdk: Vision.framework
+      - sdk: LinkPresentation.framework
+      - sdk: Speech.framework
+      - sdk: AVFoundation.framework
+  DaylineTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.steenjennings.dayline.tests
+    dependencies:
+      - target: Dayline
