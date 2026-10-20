@@ -55,10 +55,12 @@ class Summarizer: ObservableObject {
     func polishFull(transcript: String) async -> PolishResult {
         if backend == .appleFoundation, let r = await polishWithFoundationModels(transcript) {
             lastBackendUsed = "FoundationModels (on-device)"
+            Log.event("Polish", "backend=FoundationModels, tags=\(r.tags.joined(separator: ","))")
             return r
         }
         lastBackendUsed = "Local rules (fallback)"
         log.info("Polishing with local fallback")
+        Log.event("Polish", "backend=localRules FALLBACK (see earlier Polish/FoundationModels lines for why)")
         let polished = transcript
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "  ", with: " ")
@@ -69,6 +71,7 @@ class Summarizer: ObservableObject {
         #if canImport(FoundationModels)
         guard SystemLanguageModel.default.availability == .available else {
             log.info("FoundationModels unavailable: \(String(describing: SystemLanguageModel.default.availability), privacy: .public)")
+            Log.event("Polish", "FoundationModels unavailable: \(String(describing: SystemLanguageModel.default.availability))")
             return nil
         }
         do {
@@ -93,6 +96,7 @@ class Summarizer: ObservableObject {
             return PolishResult(polished: parsed.polished, tags: tags, mood: parsed.mood)
         } catch {
             log.error("FoundationModels polish failed: \(error.localizedDescription, privacy: .public)")
+            Log.event("Polish", "FoundationModels polish FAILED: \(error.localizedDescription)")
             return nil
         }
         #else
@@ -107,13 +111,20 @@ class Summarizer: ObservableObject {
         var t: [String] = []
         if lower.contains("work") || lower.contains("promo") || lower.contains("ship") || lower.contains("meeting") { t.append("work") }
         if lower.contains("hik") || lower.contains("trip") || lower.contains("beach") || lower.contains("travel") { t.append("trip") }
-        if lower.contains("family") || lower.contains("mom") || lower.contains("dad") { t.append("family") }
-        if lower.contains("code") || lower.contains("app") || lower.contains("build") { t.append("building") }
+        if lower.contains("family") || hasWord(lower, "mom") || hasWord(lower, "dad") { t.append("family") }
+        if lower.contains("code") || hasWord(lower, "app") || lower.contains("build") { t.append("building") }
         if lower.contains("dinner") || lower.contains("lunch") || lower.contains("breakfast") || lower.contains("ate ") { t.append("dinner") }
         if lower.contains("pool") || lower.contains("swim") { t.append("pool") }
-        if lower.contains("gym") || lower.contains("run") || lower.contains("workout") || lower.contains("basketball") { t.append("health") }
+        if lower.contains("gym") || hasWord(lower, "run") || lower.contains("workout") || lower.contains("basketball") { t.append("health") }
         if lower.contains("friend") { t.append("friends") }
         return Array(Set(t))
+    }
+
+    /// Whole-word check: substring matching made "moment" tag as family
+    /// (contains "mom") and "happy" as building (contains "app"). Short
+    /// stems still substring-match on purpose ("ship" -> shipped).
+    private func hasWord(_ text: String, _ word: String) -> Bool {
+        text.range(of: "\\b\(word)\\b", options: .regularExpression) != nil
     }
 
     /// Tags actually present across entries - drives the Trends tab so new

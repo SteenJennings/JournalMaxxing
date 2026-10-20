@@ -27,22 +27,38 @@ final class SpeechTranscriberService: ObservableObject {
     private var converter: AVAudioConverter?
     private var finalText: String = ""
     private var volatileText: String = ""
+    /// Guards the async start window: permissions + a possible model
+    /// download take seconds, during which isRecording is still false and
+    /// a second tap would install a second audio tap (a hard crash in
+    /// AVAudioEngine) or start a competing analyzer.
+    @Published private(set) var isStarting = false
+    private var startGeneration = 0
 
     func toggle() {
-        if isRecording { stop() } else { Task { await start() } }
+        if isRecording || isStarting { stop() } else { Task { await start() } }
     }
 
     func start() async {
+        guard !isRecording, !isStarting else { return }
+        isStarting = true
+        let generation = startGeneration
+        defer { if generation == startGeneration { isStarting = false } }
+        // F3: reset text state up front. Results can only arrive after the
+        // engine starts, but resetting late risks wiping an early result.
+        finalText = ""
+        volatileText = ""
+        transcript = ""
         errorMessage = nil
         // Permissions: speech recognition + microphone.
         let speechOK = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
             SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0 == .authorized) }
         }
-        guard speechOK else { errorMessage = "Speech recognition permission was not granted."; return }
+        guard speechOK else { errorMessage = "Speech recognition permission was not granted."; Log.event("Speech", "speech recognition permission DENIED"); return }
         let micOK = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
             AVAudioApplication.requestRecordPermission { c.resume(returning: $0) }
         }
-        guard micOK else { errorMessage = "Microphone permission was not granted."; return }
+        guard micOK else { errorMessage = "Microphone permission was not granted."; Log.event("Speech", "microphone permission DENIED"); return }
+        guard generation == startGeneration else { Log.event("Speech", "start aborted (stopped during setup)"); return }
 
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
             errorMessage = "Speech transcription is not available for your language/region yet."
@@ -56,7 +72,9 @@ final class SpeechTranscriberService: ObservableObject {
             // The transcription model is a system asset; download it if the
             // device does not have it yet (one-time, system-managed).
             if let installRequest = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
+                Log.event("Speech", "transcription model asset not present - downloading")
                 try await installRequest.downloadAndInstall()
+                Log.event("Speech", "transcription model asset installed")
             }
 
             let session = SpeechAnalyzer(modules: [module])
@@ -67,6 +85,7 @@ final class SpeechTranscriberService: ObservableObject {
                 return
             }
             try await session.prepareToAnalyze(in: format)
+            guard generation == startGeneration else { Log.event("Speech", "start aborted (stopped during setup)"); return }
 
             let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
             inputContinuation = continuation
@@ -89,7 +108,7 @@ final class SpeechTranscriberService: ObservableObject {
                         }
                     }
                 } catch {
-                    await MainActor.run { self?.errorMessage = "Transcription stopped unexpectedly." }
+                    await MainActor.run { self?.errorMessage = "Transcription stopped unexpectedly."; Log.event("Speech", "results stream error: \(error.localizedDescription)") }
                 }
             }
 
@@ -107,17 +126,18 @@ final class SpeechTranscriberService: ObservableObject {
             }
             audioEngine.prepare()
             try audioEngine.start()
-            finalText = ""
-            volatileText = ""
-            transcript = ""
+            Log.event("Speech", "analyzer started (locale \(locale.identifier), format \(format.sampleRate)Hz)")
             isRecording = true
         } catch {
             errorMessage = "Could not start transcription: \(error.localizedDescription)"
+            Log.event("Speech", "start failed: \(error.localizedDescription)")
             stop()
         }
     }
 
     func stop() {
+        startGeneration += 1
+        isStarting = false
         if audioEngine.isRunning {
             audioEngine.stop()
             audioEngine.inputNode.removeTap(onBus: 0)
@@ -129,6 +149,7 @@ final class SpeechTranscriberService: ObservableObject {
         let session = analyzer
         analyzer = nil
         transcriber = nil
+        Log.event("Speech", "stopped (final transcript \(transcript.count) chars)")
         if let session {
             Task { try? await session.finalizeAndFinishThroughEndOfInput() }
         }

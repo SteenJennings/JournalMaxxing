@@ -11,6 +11,7 @@ class PhotoService: ObservableObject {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] status in
             Task { @MainActor in
                 self?.permissionStatus = status
+                Log.event("Photos", "library authorization: \(status.rawValue) (3=authorized, 4=limited)")
                 if status == .authorized || status == .limited {
                     self?.fetchTodaysPhotos()
                 }
@@ -35,6 +36,7 @@ class PhotoService: ObservableObject {
         var arr: [PHAsset] = []
         result.enumerateObjects { a, _, _ in arr.append(a) }
         todaysAssets = arr
+        Log.event("Photos", "fetched \(arr.count) assets for \(start.formatted(date: .abbreviated, time: .omitted))")
     }
 
     /// Fast fallback: no analysis, first few assets. Used while ranked
@@ -49,7 +51,8 @@ class PhotoService: ObservableObject {
     /// features per localIdentifier is the known next optimisation.
     func rankedSuggest(for transcript: String, limit: Int = 5) async -> [PHAsset] {
         let candidates = Array(todaysAssets.prefix(24))
-        guard !candidates.isEmpty else { return [] }
+        Log.event("Photos", "rankedSuggest: \(candidates.count) candidates from \(todaysAssets.count) assets")
+        guard !candidates.isEmpty else { Log.event("Photos", "rankedSuggest: NO candidates (empty day or no permission)"); return [] }
         var scored: [(asset: PHAsset, score: Double)] = []
         for asset in candidates {
             guard let thumb = await AssetMediaLoader.image(
@@ -60,7 +63,9 @@ class PhotoService: ObservableObject {
             let result = PhotoRanker.score(features: features, transcript: transcript)
             scored.append((asset, result.score))
         }
-        if scored.isEmpty { return suggest(for: transcript) }
-        return scored.sorted { $0.score > $1.score }.prefix(limit).map(\.asset)
+        if scored.isEmpty { Log.event("Photos", "rankedSuggest: 0 scored, using prefix fallback"); return suggest(for: transcript) }
+        let ranked = scored.sorted { $0.score > $1.score }
+        Log.event("Photos", "rankedSuggest: \(ranked.count) scored, top \(String(format: "%.2f", ranked.first?.score ?? 0))")
+        return ranked.prefix(limit).map(\.asset)
     }
 }

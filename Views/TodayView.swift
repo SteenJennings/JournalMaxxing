@@ -38,7 +38,7 @@ struct TodayView: View {
 
                     HStack {
                         Button { transcriber.toggle() } label: {
-                            Label(transcriber.isRecording ? "Stop" : "Speak",
+                            Label(transcriber.isRecording ? "Stop" : (transcriber.isStarting ? "Starting..." : "Speak"),
                                   systemImage: transcriber.isRecording ? "stop.circle.fill" : "mic.fill")
                         }
                         .buttonStyle(.bordered)
@@ -129,8 +129,10 @@ struct TodayView: View {
         do {
             try modelContext.save()
             savedMessage = "Saved to your journal"
+            Log.event("Save", "entry saved (\(existing == nil ? "new" : "updated")), media=\(entry.mediaLocalIds.count), tags=\(entry.projectTags.count)")
         } catch {
             savedMessage = "Could not save: \(error.localizedDescription)"
+            Log.event("Save", "entry save FAILED: \(error.localizedDescription)")
         }
     }
 }

@@ -24,6 +24,18 @@ without one.
 
 ## iCloud: your instinct is right, and half of it already works
 
+Two different things share the "iCloud" name, and only one costs money:
+
+- **iCloud Photos** (your library syncing itself) — a consumer feature of
+  your Apple ID. ANY app with your photo permission can reference those
+  assets through PhotoKit, free provisioning included. **This is free and
+  already works in Dayline.**
+- **iCloud as a developer platform** (CloudKit containers, an iCloud
+  documents folder owned by this app) — syncing the app's OWN data (here:
+  journal text) between devices. That needs the iCloud entitlement, which
+  free provisioning does not grant. **This is the $99-gated part** — plus
+  widgets and share extensions, which need the same class of capability.
+
 **Photos:** if you use iCloud Photos, your library already syncs itself.
 PhotoKit doesn't care where an asset physically lives: ask for a
 `localIdentifier` and iOS hands back the image, downloading it from iCloud

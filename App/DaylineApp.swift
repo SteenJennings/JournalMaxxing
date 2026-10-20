@@ -1,9 +1,14 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 
 @main
 struct DaylineApp: App {
+    init() {
+        Log.event("App", "launched on iOS \(UIDevice.current.systemVersion)")
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
