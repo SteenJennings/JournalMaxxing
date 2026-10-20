@@ -27,12 +27,27 @@ final class SpeechTranscriberService: ObservableObject {
     private var converter: AVAudioConverter?
     private var finalText: String = ""
     private var volatileText: String = ""
+    /// Guards the async start window: permissions + a possible model
+    /// download take seconds, during which isRecording is still false and
+    /// a second tap would install a second audio tap (a hard crash in
+    /// AVAudioEngine) or start a competing analyzer.
+    private var isStarting = false
+    private var startGeneration = 0
 
     func toggle() {
-        if isRecording { stop() } else { Task { await start() } }
+        if isRecording || isStarting { stop() } else { Task { await start() } }
     }
 
     func start() async {
+        guard !isRecording, !isStarting else { return }
+        isStarting = true
+        let generation = startGeneration
+        defer { if generation == startGeneration { isStarting = false } }
+        // F3: reset text state up front. Results can only arrive after the
+        // engine starts, but resetting late risks wiping an early result.
+        finalText = ""
+        volatileText = ""
+        transcript = ""
         errorMessage = nil
         // Permissions: speech recognition + microphone.
         let speechOK = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
@@ -43,6 +58,7 @@ final class SpeechTranscriberService: ObservableObject {
             AVAudioApplication.requestRecordPermission { c.resume(returning: $0) }
         }
         guard micOK else { errorMessage = "Microphone permission was not granted."; Log.event("Speech", "microphone permission DENIED"); return }
+        guard generation == startGeneration else { Log.event("Speech", "start aborted (stopped during setup)"); return }
 
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
             errorMessage = "Speech transcription is not available for your language/region yet."
@@ -69,6 +85,7 @@ final class SpeechTranscriberService: ObservableObject {
                 return
             }
             try await session.prepareToAnalyze(in: format)
+            guard generation == startGeneration else { Log.event("Speech", "start aborted (stopped during setup)"); return }
 
             let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
             inputContinuation = continuation
@@ -111,9 +128,6 @@ final class SpeechTranscriberService: ObservableObject {
             audioEngine.prepare()
             try audioEngine.start()
             Log.event("Speech", "analyzer started (locale \(locale.identifier), format \(format.sampleRate)Hz)")
-            finalText = ""
-            volatileText = ""
-            transcript = ""
             isRecording = true
         } catch {
             errorMessage = "Could not start transcription: \(error.localizedDescription)"
@@ -123,6 +137,8 @@ final class SpeechTranscriberService: ObservableObject {
     }
 
     func stop() {
+        startGeneration += 1
+        isStarting = false
         if audioEngine.isRunning {
             audioEngine.stop()
             audioEngine.inputNode.removeTap(onBus: 0)

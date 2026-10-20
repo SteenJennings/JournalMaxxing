@@ -45,7 +45,12 @@ enum AssetMediaLoader {
             ) { image, info in
                 let degraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
                 box.offer(image, isDegraded: degraded)
-                if !degraded { box.finish() }
+                // Finish on the final callback, and also on error/cancel:
+                // if a degraded preview arrived and the full image then
+                // fails (iCloud hiccup), nothing else will call back and
+                // the caller would hang forever without this.
+                let failed = info?[PHImageErrorKey] != nil || ((info?[PHImageCancelledKey] as? Bool) ?? false)
+                if !degraded || failed { box.finish() }
             }
         }
     }
