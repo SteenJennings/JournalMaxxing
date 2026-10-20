@@ -111,13 +111,20 @@ class Summarizer: ObservableObject {
         var t: [String] = []
         if lower.contains("work") || lower.contains("promo") || lower.contains("ship") || lower.contains("meeting") { t.append("work") }
         if lower.contains("hik") || lower.contains("trip") || lower.contains("beach") || lower.contains("travel") { t.append("trip") }
-        if lower.contains("family") || lower.contains("mom") || lower.contains("dad") { t.append("family") }
-        if lower.contains("code") || lower.contains("app") || lower.contains("build") { t.append("building") }
+        if lower.contains("family") || hasWord(lower, "mom") || hasWord(lower, "dad") { t.append("family") }
+        if lower.contains("code") || hasWord(lower, "app") || lower.contains("build") { t.append("building") }
         if lower.contains("dinner") || lower.contains("lunch") || lower.contains("breakfast") || lower.contains("ate ") { t.append("dinner") }
         if lower.contains("pool") || lower.contains("swim") { t.append("pool") }
-        if lower.contains("gym") || lower.contains("run") || lower.contains("workout") || lower.contains("basketball") { t.append("health") }
+        if lower.contains("gym") || hasWord(lower, "run") || lower.contains("workout") || lower.contains("basketball") { t.append("health") }
         if lower.contains("friend") { t.append("friends") }
         return Array(Set(t))
+    }
+
+    /// Whole-word check: substring matching made "moment" tag as family
+    /// (contains "mom") and "happy" as building (contains "app"). Short
+    /// stems still substring-match on purpose ("ship" -> shipped).
+    private func hasWord(_ text: String, _ word: String) -> Bool {
+        text.range(of: "\\b\(word)\\b", options: .regularExpression) != nil
     }
 
     /// Tags actually present across entries - drives the Trends tab so new

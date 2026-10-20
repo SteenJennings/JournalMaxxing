@@ -31,7 +31,7 @@ final class SpeechTranscriberService: ObservableObject {
     /// download take seconds, during which isRecording is still false and
     /// a second tap would install a second audio tap (a hard crash in
     /// AVAudioEngine) or start a competing analyzer.
-    private var isStarting = false
+    @Published private(set) var isStarting = false
     private var startGeneration = 0
 
     func toggle() {

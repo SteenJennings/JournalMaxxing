@@ -69,3 +69,25 @@ work?
   audio session.
 - Photo ranking wall-clock time with a real (partly iCloud) library —
   read it off the Diagnostics timestamps.
+
+## Pass 2 addendum (same day, views + logic)
+Fixed:
+- **Year grid was a dead end.** Tapping a past entry did nothing - there
+  was no way to reopen a day's scrapbook. Cards now navigate to an
+  EntryDetailView (full scrapbook resolved from stored identifiers).
+- **Scrapbook cards after the first were half-empty** (an empty text
+  column beside a small thumbnail). Later cards are now media-led,
+  full-width.
+- **Videos never moved.** Players were created but never played; the
+  design's GIF-like behaviour is now real: muted autoplay + loop, pause
+  when scrolled away.
+- **Trends showed fake tags** with an empty journal (scaffold leftovers:
+  work/trip/building/family). Now an honest "no tags yet" state.
+- **Tagger substring traps:** "moment" tagged family ("mom"), "happy"
+  tagged building ("app"), "trunk" tagged health ("run"). Those four now
+  match on word boundaries; deliberate stems (ship, hik) still substring.
+- **Speak button** now shows "Starting..." during the async start window
+  (isStarting is published), matching the race guard from pass 1.
+Noted, not fixed: LPMetadataProvider continuation can leak if its view is
+dismissed mid-fetch (harmless, one-shot); per-cell loop observers suit the
+current scrapbook sizes.

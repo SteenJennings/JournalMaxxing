@@ -38,7 +38,7 @@ struct TodayView: View {
 
                     HStack {
                         Button { transcriber.toggle() } label: {
-                            Label(transcriber.isRecording ? "Stop" : "Speak",
+                            Label(transcriber.isRecording ? "Stop" : (transcriber.isStarting ? "Starting..." : "Speak"),
                                   systemImage: transcriber.isRecording ? "stop.circle.fill" : "mic.fill")
                         }
                         .buttonStyle(.bordered)

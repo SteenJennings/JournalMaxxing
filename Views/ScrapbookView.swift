@@ -8,10 +8,11 @@ struct ScrapbookView: View {
     var assets: [PHAsset]
     var linkURLs: [String] = []
     var placeholders: [Placeholder] = []
+    var heading: String = "Scrapbook Preview"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Scrapbook Preview").font(.headline)
+            Text(heading).font(.headline)
             if assets.isEmpty {
                 ScrapbookCard {
                     Text(text).font(.body)
@@ -20,13 +21,22 @@ struct ScrapbookView: View {
             } else {
                 ForEach(Array(assets.enumerated()), id: \.offset) { i, asset in
                     ScrapbookCard {
-                        HStack(alignment: .top, spacing: 12) {
-                            Text(i == 0 ? text : "")
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .multilineTextAlignment(.leading)
-                                .font(.body)
+                        if i == 0 {
+                            HStack(alignment: .top, spacing: 12) {
+                                Text(text)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .multilineTextAlignment(.leading)
+                                    .font(.body)
+                                AssetThumbnailView(asset: asset)
+                                    .frame(width: 130, height: 100)
+                            }
+                        } else {
+                            // Later cards are media-led: the text lives on the
+                            // first card only (an empty text column here was
+                            // a layout bug - half-empty cards).
                             AssetThumbnailView(asset: asset)
-                                .frame(width: 130, height: 100)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 180)
                         }
                     }
                 }
@@ -58,6 +68,7 @@ struct AssetThumbnailView: View {
     var asset: PHAsset
     @State private var image: UIImage?
     @State private var player: AVPlayer?
+    @State private var loopObserver: NSObjectProtocol?
 
     var body: some View {
         ZStack {
@@ -93,11 +104,21 @@ struct AssetThumbnailView: View {
                 if let item = await AssetMediaLoader.playerItem(for: asset) {
                     let p = AVPlayer(playerItem: item)
                     p.isMuted = true
+                    // GIF-like behaviour the design calls for: autoplay
+                    // muted and loop. (Observer is per-cell and small in
+                    // count; revisit if scrapbooks get long.)
+                    loopObserver = NotificationCenter.default.addObserver(
+                        forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
+                        p.seek(to: .zero)
+                        p.play()
+                    }
                     player = p
+                    p.play()
                 }
             }
             image = await AssetMediaLoader.image(for: asset, targetSize: CGSize(width: 260, height: 200))
         }
+        .onDisappear { player?.pause() }
     }
 
     private func formatDuration(_ seconds: Double) -> String {
