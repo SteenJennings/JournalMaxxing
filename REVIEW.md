@@ -50,8 +50,10 @@ work?
   lines). Fine at current volumes; throttle if photo ranking gets chatty.
 
 ## Known won't-work (platform gates, already decided)
-- iCloud/CloudKit sync of entries, widgets, share extension — all need
-  entitlements free provisioning doesn't grant (see STORAGE.md).
+- CloudKit sync of journal ENTRIES (the app's own data), widgets, share
+  extension — need entitlements free provisioning doesn't grant (see
+  STORAGE.md). Note the distinction: referencing photos that live in
+  iCloud Photos is NOT gated — that's the free, already-working path.
 - Background transcription — iOS won't keep the mic pipeline alive
   indefinitely in the background; journaling is a foreground activity.
 - SpeechAnalyzer on the simulator has no real mic path — voice is a
