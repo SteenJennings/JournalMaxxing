@@ -2,11 +2,21 @@ name: Build and Test
 
 # Unsigned simulator build + unit tests on every push.
 # No Apple Developer account, no signing secrets, no TestFlight - by design.
+#
+# On failure, the workflow files a GitHub issue containing the compiler /
+# test errors extracted from the build log. Reason: full run logs require
+# account auth to download, but issues on the repo are readable by anyone
+# with repo access - including the AI agent working on this code, which
+# only has a git deploy key.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   build-test:
@@ -27,8 +37,38 @@ jobs:
         run: xcodegen generate
 
       - name: Build and test (simulator, unsigned)
+        id: build
         run: |
+          set -o pipefail
           xcodebuild test \
             -scheme Dayline \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log
+
+      - name: Report failure as an issue
+        if: failure() && steps.build.outcome == 'failure' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "CI build/test failed for commit ${GITHUB_SHA}."
+            echo
+            echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo '## Errors extracted from build.log'
+            echo '```'
+            grep -E "error:|BUILD FAILED|TEST FAILED|Failing tests:|failed \(|XCTAssert" build.log | head -120 || echo "(no lines matched the error patterns - see full log on the run page)"
+            echo '```'
+            echo
+            echo '## Tail of build.log'
+            echo '```'
+            tail -60 build.log
+            echo '```'
+          } > issue-body.md
+          gh issue create \
+            --title "CI failure: ${GITHUB_SHA:0:7}" \
+            --body-file issue-body.md \
+            --label ci-failure || \
+          gh issue create \
+            --title "CI failure: ${GITHUB_SHA:0:7}" \
+            --body-file issue-body.md
