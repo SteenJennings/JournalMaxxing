@@ -127,8 +127,8 @@ Limited/none, which makes suggestions empty by design.
 ## What is intentionally NOT in this build yet
 - MobileCLIP open-vocabulary embeddings + cached photo index (Phase 2 —
   ranking today is Vision labels + aesthetics + faces)
-- SpeechAnalyzer engine (v1 uses the stable Speech framework on-device;
-  the transcriber is one class, built to be swapped)
-- Live Photo motion playback in the scrapbook (badge only in v1)
+- WhisperKit as an alternative transcription engine (SpeechAnalyzer is the
+  built-in default; the transcriber is one class, built to be swapped)
+- Live Photo motion playback in the scrapbook (badge only so far)
 - Widgets, share extension, iCloud sync (all blocked by free provisioning,
   none block the core loop)
