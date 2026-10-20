@@ -18,6 +18,7 @@ struct ContentView: View {
             TodayView().tabItem { Label("Today", systemImage: "mic.fill") }
             TimelineView().tabItem { Label("Year", systemImage: "calendar") }
             TrendsView().tabItem { Label("Trends", systemImage: "chart.line.uptrend.xyaxis") }
+            DataView().tabItem { Label("Data", systemImage: "externaldrive") }
         }
     }
 }
