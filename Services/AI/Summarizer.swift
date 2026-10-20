@@ -55,10 +55,12 @@ class Summarizer: ObservableObject {
     func polishFull(transcript: String) async -> PolishResult {
         if backend == .appleFoundation, let r = await polishWithFoundationModels(transcript) {
             lastBackendUsed = "FoundationModels (on-device)"
+            Log.event("Polish", "backend=FoundationModels, tags=\(r.tags.joined(separator: ","))")
             return r
         }
         lastBackendUsed = "Local rules (fallback)"
         log.info("Polishing with local fallback")
+        Log.event("Polish", "backend=localRules FALLBACK (see earlier Polish/FoundationModels lines for why)")
         let polished = transcript
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "  ", with: " ")
@@ -69,6 +71,7 @@ class Summarizer: ObservableObject {
         #if canImport(FoundationModels)
         guard SystemLanguageModel.default.availability == .available else {
             log.info("FoundationModels unavailable: \(String(describing: SystemLanguageModel.default.availability), privacy: .public)")
+            Log.event("Polish", "FoundationModels unavailable: \(String(describing: SystemLanguageModel.default.availability))")
             return nil
         }
         do {
@@ -93,6 +96,7 @@ class Summarizer: ObservableObject {
             return PolishResult(polished: parsed.polished, tags: tags, mood: parsed.mood)
         } catch {
             log.error("FoundationModels polish failed: \(error.localizedDescription, privacy: .public)")
+            Log.event("Polish", "FoundationModels polish FAILED: \(error.localizedDescription)")
             return nil
         }
         #else

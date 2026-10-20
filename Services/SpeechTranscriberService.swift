@@ -38,11 +38,11 @@ final class SpeechTranscriberService: ObservableObject {
         let speechOK = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
             SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0 == .authorized) }
         }
-        guard speechOK else { errorMessage = "Speech recognition permission was not granted."; return }
+        guard speechOK else { errorMessage = "Speech recognition permission was not granted."; Log.event("Speech", "speech recognition permission DENIED"); return }
         let micOK = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
             AVAudioApplication.requestRecordPermission { c.resume(returning: $0) }
         }
-        guard micOK else { errorMessage = "Microphone permission was not granted."; return }
+        guard micOK else { errorMessage = "Microphone permission was not granted."; Log.event("Speech", "microphone permission DENIED"); return }
 
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
             errorMessage = "Speech transcription is not available for your language/region yet."
@@ -56,7 +56,9 @@ final class SpeechTranscriberService: ObservableObject {
             // The transcription model is a system asset; download it if the
             // device does not have it yet (one-time, system-managed).
             if let installRequest = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
+                Log.event("Speech", "transcription model asset not present - downloading")
                 try await installRequest.downloadAndInstall()
+                Log.event("Speech", "transcription model asset installed")
             }
 
             let session = SpeechAnalyzer(modules: [module])
@@ -90,7 +92,7 @@ final class SpeechTranscriberService: ObservableObject {
                         }
                     }
                 } catch {
-                    await MainActor.run { self?.errorMessage = "Transcription stopped unexpectedly." }
+                    await MainActor.run { self?.errorMessage = "Transcription stopped unexpectedly."; Log.event("Speech", "results stream error: \(error.localizedDescription)") }
                 }
             }
 
@@ -108,12 +110,14 @@ final class SpeechTranscriberService: ObservableObject {
             }
             audioEngine.prepare()
             try audioEngine.start()
+            Log.event("Speech", "analyzer started (locale \(locale.identifier), format \(format.sampleRate)Hz)")
             finalText = ""
             volatileText = ""
             transcript = ""
             isRecording = true
         } catch {
             errorMessage = "Could not start transcription: \(error.localizedDescription)"
+            Log.event("Speech", "start failed: \(error.localizedDescription)")
             stop()
         }
     }
@@ -130,6 +134,7 @@ final class SpeechTranscriberService: ObservableObject {
         let session = analyzer
         analyzer = nil
         transcriber = nil
+        Log.event("Speech", "stopped (final transcript \(transcript.count) chars)")
         if let session {
             Task { try? await session.finalizeAndFinishThroughEndOfInput() }
         }

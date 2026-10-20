@@ -14,7 +14,7 @@ actor VisionService {
                 cont.resume(returning: results)
             }
             let handler = VNImageRequestHandler(cgImage: cg, options: [:])
-            do { try handler.perform([req]) } catch { cont.resume(returning: []) }
+            do { try handler.perform([req]) } catch { Log.event("Vision", "labels failed: \(error.localizedDescription)"); cont.resume(returning: []) }
         }
     }
 
@@ -31,7 +31,7 @@ actor VisionService {
                 cont.resume(returning: (Double(obs.overallScore), obs.isUtility))
             }
             let handler = VNImageRequestHandler(cgImage: cg, options: [:])
-            do { try handler.perform([req]) } catch { cont.resume(returning: nil) }
+            do { try handler.perform([req]) } catch { Log.event("Vision", "aesthetics failed: \(error.localizedDescription)"); cont.resume(returning: nil) }
         }
     }
 
@@ -42,7 +42,7 @@ actor VisionService {
                 cont.resume(returning: req.results?.count ?? 0)
             }
             let handler = VNImageRequestHandler(cgImage: cg, options: [:])
-            do { try handler.perform([req]) } catch { cont.resume(returning: 0) }
+            do { try handler.perform([req]) } catch { Log.event("Vision", "faces failed: \(error.localizedDescription)"); cont.resume(returning: 0) }
         }
     }
 

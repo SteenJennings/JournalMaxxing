@@ -7,6 +7,8 @@ struct DataView: View {
     @Query(sort: \DayEntry.date) var entries: [DayEntry]
     @State private var jsonURL: URL?
     @State private var markdownURL: URL?
+    @State private var logURL: URL?
+    @ObservedObject private var diagnostics = DiagnosticsLog.shared
 
     var body: some View {
         NavigationStack {
@@ -44,9 +46,23 @@ struct DataView: View {
                         ShareLink(item: markdownURL) { Label("Share Markdown", systemImage: "doc.text") }
                     }
                 }
-                Section("Logs") {
-                    Text("Runtime logs go to Apple's unified log (subsystem com.steenjennings.dayline). View them live in Xcode's console while the app runs from your Mac, or in Console.app. Build/test logs live in GitHub Actions on each push.")
+                Section("Diagnostics log") {
+                    Text("Decision points from speech, photos, vision, polish and saving - kept on-device across launches. If something misbehaves on your phone, share this log back and the failure will be in it.")
                         .font(.caption).foregroundStyle(.secondary)
+                    if diagnostics.lines.isEmpty {
+                        Text("No events yet - record and polish an entry first.").font(.caption)
+                    } else {
+                        ForEach(Array(diagnostics.lines.suffix(15).reversed().enumerated()), id: \.offset) { _, line in
+                            Text(line).font(.system(size: 9, design: .monospaced)).textSelection(.enabled)
+                        }
+                        Button("Prepare log file") {
+                            logURL = JournalExporter.writeTempFile(data: Data(diagnostics.exportText().utf8), name: "dayline-diagnostics.txt")
+                        }
+                        if let logURL {
+                            ShareLink(item: logURL) { Label("Share log", systemImage: "square.and.arrow.up") }
+                        }
+                        Button("Clear log", role: .destructive) { diagnostics.clear() }
+                    }
                 }
             }
             .navigationTitle("Data")

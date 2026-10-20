@@ -129,8 +129,10 @@ struct TodayView: View {
         do {
             try modelContext.save()
             savedMessage = "Saved to your journal"
+            Log.event("Save", "entry saved (\(existing == nil ? "new" : "updated")), media=\(entry.mediaLocalIds.count), tags=\(entry.projectTags.count)")
         } catch {
             savedMessage = "Could not save: \(error.localizedDescription)"
+            Log.event("Save", "entry save FAILED: \(error.localizedDescription)")
         }
     }
 }
