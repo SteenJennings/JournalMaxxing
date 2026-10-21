@@ -5,6 +5,8 @@ import Photos
 
 struct TodayView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+    @Query(sort: \DayEntry.date) private var allEntries: [DayEntry]
     @StateObject var photoService = PhotoService()
     @StateObject var summarizer = Summarizer()
     @StateObject var transcriber = SpeechTranscriberService()
@@ -23,6 +25,17 @@ struct TodayView: View {
     /// auto-ranked suggestions at save time (auto stays the default).
     @State var mediaOverride: [PHAsset]?
 
+    /// The day this screen is working on. The calendar, backfill, day
+    /// rollover, photo fetch, ranking, browser, and save all scope to it -
+    /// before this, the screen hardcoded Date() and kept yesterday's
+    /// post-save state on screen forever (Steen's 2026-10-21 report).
+    @State var selectedDate: Date = Calendar.current.startOfDay(for: Date())
+    @State var lastKnownToday: Date = Calendar.current.startOfDay(for: Date())
+
+    var isTodaySelected: Bool { Calendar.current.isDateInToday(selectedDate) }
+    var entryDays: Set<Date> {
+        Set(allEntries.map { Calendar.current.startOfDay(for: $0.date) })
+    }
     var elapsedString: String { String(format: "%d:%02d", recordingSeconds / 60, recordingSeconds % 60) }
     var wordCount: Int { transcript.split(whereSeparator: { $0.isWhitespace }).count }
 
@@ -31,10 +44,19 @@ struct TodayView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(Date().formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                        Text(selectedDate.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                             .font(Theme.display(24)).foregroundStyle(Theme.ink)
-                        Text("One page, every day.").font(.caption).foregroundStyle(.secondary)
+                        if isTodaySelected {
+                            Text("One page, every day.").font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Button("Back to today") {
+                                selectedDate = Calendar.current.startOfDay(for: Date())
+                            }
+                            .font(.caption).foregroundStyle(Theme.accent)
+                        }
                     }
+
+                    MonthCalendarView(selectedDate: $selectedDate, entryDays: entryDays)
 
                     TextField("Talk about your day...", text: $transcript, axis: .vertical)
                         .lineLimit(5...14)
@@ -44,7 +66,15 @@ struct TodayView: View {
                         }
 
                     if let err = transcriber.errorMessage {
-                        Text(err).font(.caption).foregroundStyle(.red)
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(err).font(.caption).foregroundStyle(.red)
+                            Spacer()
+                            Button { transcriber.clearAll() } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Dismiss")
+                        }
                     }
 
                     if transcriber.isRecording || transcriber.isStarting {
@@ -88,7 +118,7 @@ struct TodayView: View {
 
                     if !photoService.todaysAssets.isEmpty {
                         Button { showDayBrowser = true } label: {
-                            Label("Browse today - \(photoService.todaysAssets.count) photos & videos",
+                            Label("Browse \(isTodaySelected ? "today" : "this day") - \(photoService.todaysAssets.count) photos & videos",
                                   systemImage: "square.grid.2x2")
                                 .font(.subheadline).frame(maxWidth: .infinity)
                         }.buttonStyle(.bordered).tint(Theme.ink)
@@ -113,12 +143,16 @@ struct TodayView: View {
                     if !polished.isEmpty {
                         ScrapbookView(text: polished,
                                       assets: suggestedAssets,
-                                      linkURLs: entryLinks)
+                                      linkURLs: entryLinks,
+                                      heading: "Scrapbook Preview")
                     }
                 }.padding()
             }.navigationTitle("Today")
              .background(Theme.paper)
-             .task { photoService.requestPermissionAndFetch() }
+             .task {
+                 photoService.requestPermissionAndFetch()
+                 loadEntry(for: selectedDate)
+             }
              .task(id: transcriber.isRecording) {
                  recordingSeconds = 0
                  guard transcriber.isRecording else { return }
@@ -126,6 +160,12 @@ struct TodayView: View {
                      try? await Task.sleep(for: .seconds(1))
                      recordingSeconds += 1
                  }
+             }
+             .onChange(of: selectedDate) { _, newDay in
+                 handleDaySelection(newDay)
+             }
+             .onChange(of: scenePhase) { _, phase in
+                 if phase == .active { checkDayRollover() }
              }
              .sensoryFeedback(.success, trigger: savedMessage)
              .onChange(of: selectedItems) { _, items in
@@ -138,7 +178,7 @@ struct TodayView: View {
              }
              .sheet(isPresented: $showDayBrowser) {
                  DayMediaBrowserView(
-                     date: Date(),
+                     date: selectedDate,
                      initialSelection: Set((mediaOverride ?? (suggestedAssets.isEmpty ? photoService.suggest(for: transcript) : suggestedAssets)).map(\.localIdentifier))
                  ) { chosen in
                      mediaOverride = chosen
@@ -147,6 +187,70 @@ struct TodayView: View {
              }
         }
     }
+
+    // MARK: - Day scoping
+
+    /// Every day change funnels through here (calendar tap, rollover, back
+    /// to today): reset compose state, scope photos to the new day, and
+    /// load that day's entry if one exists.
+    private func handleDaySelection(_ day: Date) {
+        resetCompose()
+        photoService.fetchAssets(on: day)
+        loadEntry(for: day)
+    }
+
+    private func resetCompose() {
+        transcript = ""
+        polished = ""
+        tags = []
+        mood = nil
+        savedMessage = nil
+        suggestedAssets = []
+        entryLinks = []
+        mediaOverride = nil
+        selectedItems = []
+        transcriber.clearAll()
+    }
+
+    /// If the selected day already has an entry, present it as the page
+    /// (transcript, polished text, tags, media) instead of a blank editor -
+    /// this is also what makes reopening the app show today's saved page.
+    private func loadEntry(for day: Date) {
+        let start = Calendar.current.startOfDay(for: day)
+        guard let end = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return }
+        let descriptor = FetchDescriptor<DayEntry>(
+            predicate: #Predicate { $0.date >= start && $0.date < end },
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        guard let entry = (try? modelContext.fetch(descriptor))?.first else { return }
+        transcript = entry.rawTranscript
+        polished = entry.polishedText
+        tags = entry.projectTags
+        mood = entry.mood
+        entryLinks = entry.linkURLs
+        suggestedAssets = AssetMediaLoader.fetchAssets(localIdentifiers: entry.mediaLocalIds)
+        savedMessage = "Saved to your journal"
+        Log.event("Today", "loaded existing entry for \(start.formatted(date: .abbreviated, time: .omitted)) (\(entry.mediaLocalIds.count) media, \(entry.projectTags.count) tags)")
+    }
+
+    /// Midnight passed while the app sat open: if Steen was sitting on
+    /// (what was) today, move to the new today. A mid-draft page is never
+    /// yanked away - the rollover waits until the draft is saved or empty.
+    private func checkDayRollover() {
+        let today = Calendar.current.startOfDay(for: Date())
+        guard today != lastKnownToday else { return }
+        let wasOnOldToday = Calendar.current.isDate(selectedDate, inSameDayAs: lastKnownToday)
+        lastKnownToday = today
+        guard wasOnOldToday else { return }
+        if transcript.isEmpty || savedMessage != nil {
+            selectedDate = today
+            Log.event("Today", "day rolled over - moved to \(today.formatted(date: .abbreviated, time: .omitted))")
+        } else {
+            Log.event("Today", "day rolled over but a draft is in progress - staying put")
+        }
+    }
+
+    // MARK: - Polish & save
 
     func polishAndSave() async {
         isPolishing = true
@@ -158,7 +262,8 @@ struct TodayView: View {
         entryLinks = LinkExtractor.extract(from: transcript)
 
         // Ranked suggestions first; fall back to the day's first assets.
-        // A hand-picked day-browser selection overrides the auto picks.
+        // photoService is scoped to selectedDate, so backfill days rank
+        // against that day's library. A hand-picked browser selection wins.
         let ranked = await photoService.rankedSuggest(for: result.polished)
         suggestedAssets = ranked.isEmpty ? photoService.suggest(for: result.polished) : ranked
         if let mediaOverride { suggestedAssets = mediaOverride }
@@ -167,18 +272,22 @@ struct TodayView: View {
         isPolishing = false
     }
 
-    /// One entry per calendar day: re-polishing today updates today's entry
-    /// instead of creating a duplicate.
+    /// One entry per calendar day (the selected day): re-polishing a day
+    /// updates its entry instead of creating a duplicate.
     private func saveEntry(result: PolishResult) {
-        let start = Calendar.current.startOfDay(for: Date())
+        let start = Calendar.current.startOfDay(for: selectedDate)
+        guard let end = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return }
         let descriptor = FetchDescriptor<DayEntry>(
-            predicate: #Predicate { $0.date >= start },
+            predicate: #Predicate { $0.date >= start && $0.date < end },
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
-        let existing = (try? modelContext.fetch(descriptor))?.first {
-            Calendar.current.isDateInToday($0.date)
-        }
-        let entry = existing ?? DayEntry(date: Date(), rawTranscript: transcript)
+        let existing = (try? modelContext.fetch(descriptor))?.first
+        // A backfilled entry gets the selected day at the current time of
+        // day; today's entry gets right now.
+        let entryDate = isTodaySelected
+            ? Date()
+            : start.addingTimeInterval(Date().timeIntervalSince(Calendar.current.startOfDay(for: Date())))
+        let entry = existing ?? DayEntry(date: entryDate, rawTranscript: transcript)
         entry.rawTranscript = transcript
         entry.polishedText = result.polished
         entry.projectTags = result.tags
@@ -191,7 +300,7 @@ struct TodayView: View {
         do {
             try modelContext.save()
             savedMessage = "Saved to your journal"
-            Log.event("Save", "entry saved (\(existing == nil ? "new" : "updated")), media=\(entry.mediaLocalIds.count), tags=\(entry.projectTags.count)")
+            Log.event("Save", "entry saved (\(existing == nil ? "new" : "updated")) for \(start.formatted(date: .abbreviated, time: .omitted)), media=\(entry.mediaLocalIds.count), tags=\(entry.projectTags.count)")
         } catch {
             savedMessage = "Could not save: \(error.localizedDescription)"
             Log.event("Save", "entry save FAILED: \(error.localizedDescription)")

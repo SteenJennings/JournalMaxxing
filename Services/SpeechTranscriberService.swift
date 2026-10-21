@@ -34,6 +34,16 @@ final class SpeechTranscriberService: ObservableObject {
     @Published private(set) var isStarting = false
     private var startGeneration = 0
 
+    /// Clear the error banner and any captured text (day rollover, day
+    /// switch, manual dismiss). Does not touch a live recording.
+    func clearAll() {
+        errorMessage = nil
+        guard !isRecording else { return }
+        transcript = ""
+        finalText = ""
+        volatileText = ""
+    }
+
     func toggle() {
         if isRecording || isStarting { stop() } else { Task { await start() } }
     }
