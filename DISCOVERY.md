@@ -292,12 +292,18 @@ journal, not a stock gallery.
 6. **People in words rail** — name collections derived from *text
    mentions only*, labeled honestly ("Malia — mentioned in 63 entries").
    No face claims; this is a journal, names in words are the signal.
-7. **Unwritten memories rail** — days with strong photos but **no entry**
-   (photo-only days from the library, clustered): "Oct 12 — 23 photos at
-   the beach, no entry." Tap → jumps to that day in Today to backfill,
-   with the photos pre-loaded. This is the page's growth engine: the
-   past asks to be written. (Settles the photo-only-days question as
-   *yes, but as prompts*, not as fake entries.)
+7. **Unwritten memories rail** — **recent gaps only** (Steen's rule,
+   2026-10-21). A missed day is only worth prompting while he can still
+   actually remember it. Eligibility: the day is within the trailing
+   **21 days**, AND he was journaling around it (entries in the
+   surrounding ±7 days) or the day belongs to a trip cluster that ended
+   within the window. "Oct 12 — 23 photos at the beach, no entry." Tap →
+   that day in Today, photos pre-loaded, ready to backfill. Prompts
+   **expire silently** when the window passes — a 6-month-old photo day
+   is never presented as a missed memory, because it isn't one anymore;
+   it just becomes part of Places/Themes via its photos. Max 3 shown,
+   strongest first. This is the page's growth engine for the present,
+   not an archaeology project.
 8. **Insights strip** — Trends, matured: gentle, descriptive facts
    computed from concepts + mood + dates. "12 journal days this month."
    "Gym days cluster on Tuesdays." "Your happiest tags: beach, friends."
@@ -349,6 +355,137 @@ Edit mode on the page: reorder rails, pin any collection into a
 rail types. All of it lives in `CollectionPrefs` + `ResurfaceState`;
 collections remain computed, only preferences persist.
 
+## The agentic Memory Builder (chains & stories)
+
+Everything above the line in this doc is retrieval. This section is the
+piece Steen asked for explicitly (2026-10-21): an **agentic layer inside
+the app** that decides what deserves to be chained together and turns it
+into a story. Verdict: yes, buildable on-device — as *bounded agent
+passes over structured evidence*, not a free-roaming autonomous agent.
+
+### Two tiers: Collections vs Stories
+
+- **Collection** = complete facet membership. Every Gym entry. Nothing
+  is ever excluded; this is the trustworthy, boring layer (search and
+  Themes live here).
+- **Story (chain)** = a *curated* sequence the agent assembled because
+  the entries genuinely connect and the strong ones carry it. A story
+  may draw from a collection but only its core entries become chapters.
+  Curation can omit; it can never hide anything from the collection
+  underneath, and every omission is one tap away ("View all 23 entries"
+  at the end of every story).
+
+### What makes a chain (candidate types, in flagship order)
+
+1. **Trips — the flagship.** Temporal + spatial continuity: consecutive
+   days away from home. Chapters break at place changes; the chain
+   carries a route (San Francisco → Memphis → New Orleans), stats
+   (6 days · 4 places · 212 photos · 5 entries), and a cover. Trips are
+   where chaining is unambiguous and the payoff is highest, so this
+   candidate type ships first and sets the quality bar.
+2. **Place × theme series.** Recurring life in one place: "Dinners in
+   San Francisco", "Beach days", "Nights at the theater district". The
+   agent tests whether the series is *strong*: enough entries where the
+   dinner was actually the subject (he wrote about it, there are food
+   photos, a restaurant is named) — not every day that happens to
+   mention eating. Routine takeout mentions stay in the Dinner
+   collection and out of the story.
+3. **Rituals & arcs.** Repeated patterns with a shape: ski season,
+   a training block, building Dayline, Sunday resets. Detected from
+   concept + cadence; proposed only when the arc has a beginning and
+   some density — a scatter of mentions is a theme, not an arc.
+4. **Explicitly out of scope for auto-stories:** health journeys
+   (PT recovery, illness, therapy arcs). Real chains exist there, but
+   auto-assembling them into a cheerful story is exactly wrong. Search
+   and collections still cover them fully; stories there are
+   manual-only if Steen ever wants one.
+
+### Entry strength (how the agent tells a *special* dinner from a mention)
+
+Each entry gets an importance score from observable signals:
+
+- **Text depth** — he actually wrote about it (length, detail, named
+  specifics) vs a passing clause
+- **Specificity** — named restaurant/place/people, occasion words
+  (anniversary, birthday, first time, finally)
+- **Superlatives & affect** — "best", "amazing", "incredible", strong
+  positive mood
+- **Media strength** — photo count, top aesthetic scores, food/people
+  labels matching the theme, a video
+- **Social weight** — guests/visitors/partner present in text
+- **Rarity** — first time at a place, once-a-year events
+
+Chapters require strength above a bar; below-bar entries in the same
+collection become "also in this collection" footnotes, not chapters.
+
+### The agent pipeline (bounded passes, cached verdicts)
+
+1. **Candidate generation (deterministic).** Cluster the facet index:
+   trip clusters, concept × place clusters, cadence patterns. Cheap,
+   complete, no model involved. Output: candidate bundles (member entry
+   IDs + facet evidence + stats).
+2. **Judge pass (Foundation Models).** Per candidate, the model sees a
+   compact evidence card per entry (date, concepts, place, 1–2 sentence
+   excerpt, strength signals) — never the whole journal — and returns:
+   coherence score, verdict (story / plain collection / reject), core
+   vs peripheral membership, and a one-line reason. Constrained output,
+   validated against entry IDs.
+3. **Assembly pass.** For accepted stories: chronological order (trips)
+   or chronological-with-strongest-first-chapter (series), chapter
+   breaks at place/date seams, cover pick (best media among core
+   entries), title + subtitle **built from his own material** — place
+   names, dates, and pull-quotes are verbatim from his entries. The
+   agent curates and labels; it does not invent narrative prose for the
+   story body. (An optional generated one-line intro is allowed only if
+   visually marked as generated.)
+4. **Critic pass.** A second, adversarial check before anything is
+   shown: duplicates or >40% overlap with an existing story (merge or
+   demote to sub-story), sensitivity screen (the hero guardrails apply
+   to stories too), minimum gates: ≥3 core entries (trips: ≥2 days),
+   ≥half the core entries carrying media or substantial text,
+   coherence ≥ threshold. Fail = candidate dies quietly, reason logged.
+5. **Human loop (lightweight).** Stories appear with a "Why this
+   story?" line (the judge's reason, in plain words). Actions: **Keep**,
+   **Not a story** (candidate permanently suppressed), **Edit members**,
+   **Rename**. Dismissals and approvals are stored as tuning signals:
+   repeated dismissals of a candidate type raise its bar; approvals
+   lower it slightly. The agent proposes; Steen's verdicts calibrate it.
+
+### Running it inside a phone app (the honest constraints)
+
+- **No true background agent on iOS.** Passes run incrementally: after
+  an entry save (re-judge only affected candidates), and on Discover
+  open (drain a small time-boxed job queue). Everything is resumable;
+  nothing blocks the UI.
+- **Context limits are handled hierarchically.** FM's ~4k-token window
+  never sees a whole trip's text: per-entry evidence cards first, then
+  the judge works from cards; long trips get per-day one-line digests
+  before the chain-level pass.
+- **Verdicts are cached by content hash.** If a candidate's membership
+  and evidence haven't changed, it is never re-judged. Most opens do
+  zero model work.
+- **Deterministic fallback.** If Foundation Models is unavailable, trips
+  still chain by the clustering rules alone (no judge polish, plainer
+  titles), and series/rituals stay collections until a judge exists.
+  The app degrades; it doesn't break.
+- **Provenance everywhere.** Every story stores: candidate type, member
+  entry IDs with core/peripheral flags, judge reason, model/rules
+  version, and Steen's verdict. Any story can be traced to *why it
+  exists* — the same explainability rule as collections.
+
+### Acceptance tests (trial and error, defined up front)
+
+- A 5-day trip with entries must become one trip story, correctly
+  chaptered, with no home days absorbed into it.
+- "Dinners in San Francisco": routine takeout one-liners must NOT
+  become chapters; the anniversary dinner with photos and a named
+  restaurant MUST.
+- A candidate Steen dismisses must never reappear in altered disguise
+  (same core membership ±1 entry = same candidate).
+- No story may be built from Sick/Pain/Therapy/medical entries.
+- Every story's "Why this story?" must cite signals a human can verify
+  from the entries themselves.
+
 ## Information architecture
 
 - **Trends tab → "Explore" tab**: Search field pinned on top; rails:
@@ -395,12 +532,17 @@ collections remain computed, only preferences persist.
 4. **AssetFeatureCache + Places/Trips** — persist Vision/location facets;
    geocode hierarchy (Phuket ⊂ Thailand); home derivation; trip
    clustering; photo evidence joins search and themes.
-5. **Discover page / Memory Lane** — the rails per the deep design
-   above, the hero resurfacing engine (anniversaries → trips → strong
-   days, with the sensitivity guardrails and ResurfaceState), Story
-   view, the Unwritten memories rail, the insights strip, and the
+5. **Agentic Memory Builder** — candidate generation, judge/assembly/
+   critic passes, story storage with provenance, and the Keep /
+   Not-a-story calibration loop. Trips first (flagship), then
+   place × theme series, then rituals/arcs.
+6. **Discover page / Memory Lane** — the rails per the deep design
+   above (Stories rail fed by the Memory Builder), the hero
+   resurfacing engine (anniversaries → trips → strong days, with the
+   sensitivity guardrails and ResurfaceState), Story view, the
+   recent-only Unwritten memories rail, the insights strip, and the
    Pinned/Hidden/Rename management layer.
-6. *(Optional)* **Embedding layer** — MobileCLIP/contextual embeddings;
+7. *(Optional)* **Embedding layer** — MobileCLIP/contextual embeddings;
    only with evidence that taxonomy-planned search is still missing
    things Steen looks for.
 
@@ -408,9 +550,12 @@ collections remain computed, only preferences persist.
 
 - Tab/page name: Discover, Memories, or Lane? (The design above uses
   "Memory Lane" as the page title whichever tab label wins.)
-- Photo-only days are proposed as the **Unwritten memories** rail —
-  prompts to backfill, *not* auto-generated fake entries, and Trips
-  stay entry-based. Confirm that split feels right.
+- Photo-only days: **decided in principle** (Steen, 2026-10-21) — the
+  Unwritten memories rail covers recent gaps only (default trailing
+  21 days, journaling activity nearby or a just-ended trip), prompts
+  expire silently, and older photo days surface only through
+  Places/Themes. Remaining knob: is 21 days the right default window
+  (7 / 14 / 30)?
 - Is "People" worth doing via *names in text* (entries mentioning Malia)
   as pseudo-collections, given face identity is off-limits?
 - Taxonomy governance: fixed at ~100 concepts curated by us, or should
