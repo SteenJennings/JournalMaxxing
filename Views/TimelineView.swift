@@ -83,7 +83,9 @@ struct TrendsView: View {
 /// from the stored photo identifiers.
 struct EntryDetailView: View {
     var entry: DayEntry
+    @Environment(\.modelContext) private var modelContext
     @State private var assets: [PHAsset] = []
+    @State private var showDayBrowser = false
     var body: some View {
         ScrollView {
             ScrapbookView(text: entry.polishedText.isEmpty ? entry.rawTranscript : entry.polishedText,
@@ -93,7 +95,28 @@ struct EntryDetailView: View {
                           heading: "Scrapbook")
                 .padding()
         }
+        .background(Theme.paper)
         .navigationTitle(entry.date.formatted(date: .abbreviated, time: .omitted))
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showDayBrowser = true } label: {
+                    Label("Edit photos", systemImage: "photo.on.rectangle.angled")
+                }
+            }
+        }
+        .sheet(isPresented: $showDayBrowser) {
+            DayMediaBrowserView(date: entry.date,
+                                initialSelection: Set(entry.mediaLocalIds)) { chosen in
+                entry.mediaLocalIds = chosen.map(\.localIdentifier)
+                if let highlight = entry.highlightLocalId, !entry.mediaLocalIds.contains(highlight) {
+                    entry.highlightLocalId = entry.mediaLocalIds.first
+                }
+                entry.updatedAt = Date()
+                try? modelContext.save()
+                assets = chosen
+                Log.event("Browser", "entry media edited via day browser: now \(chosen.count) items")
+            }
+        }
         .task { assets = AssetMediaLoader.fetchAssets(localIdentifiers: entry.mediaLocalIds) }
     }
 }

@@ -18,6 +18,10 @@ struct TodayView: View {
     @State var entryLinks: [String] = []
     @State var selectedItems: [PhotosPickerItem] = []
     @State var recordingSeconds = 0
+    @State var showDayBrowser = false
+    /// Set when Steen hand-picks media in the day browser; wins over the
+    /// auto-ranked suggestions at save time (auto stays the default).
+    @State var mediaOverride: [PHAsset]?
 
     var elapsedString: String { String(format: "%d:%02d", recordingSeconds / 60, recordingSeconds % 60) }
     var wordCount: Int { transcript.split(whereSeparator: { $0.isWhitespace }).count }
@@ -81,6 +85,14 @@ struct TodayView: View {
                             .frame(maxWidth: .infinity)
                     }.buttonStyle(.borderedProminent).tint(Theme.accent)
                      .disabled(transcript.isEmpty || isPolishing)
+
+                    if !photoService.todaysAssets.isEmpty {
+                        Button { showDayBrowser = true } label: {
+                            Label("Browse today - \(photoService.todaysAssets.count) photos & videos",
+                                  systemImage: "square.grid.2x2")
+                                .font(.subheadline).frame(maxWidth: .infinity)
+                        }.buttonStyle(.bordered).tint(Theme.ink)
+                    }
                     .onChange(of: selectedItems) { _, items in
                         let ids = items.compactMap(\.itemIdentifier)
                         guard !ids.isEmpty else { return }
@@ -124,6 +136,15 @@ struct TodayView: View {
                  }
              }
              .sensoryFeedback(.success, trigger: savedMessage)
+             .sheet(isPresented: $showDayBrowser) {
+                 DayMediaBrowserView(
+                     date: Date(),
+                     initialSelection: Set((mediaOverride ?? (suggestedAssets.isEmpty ? photoService.suggest(for: transcript) : suggestedAssets)).map(\.localIdentifier))
+                 ) { chosen in
+                     mediaOverride = chosen
+                     suggestedAssets = chosen
+                 }
+             }
         }
     }
 
@@ -137,8 +158,10 @@ struct TodayView: View {
         entryLinks = LinkExtractor.extract(from: transcript)
 
         // Ranked suggestions first; fall back to the day's first assets.
+        // A hand-picked day-browser selection overrides the auto picks.
         let ranked = await photoService.rankedSuggest(for: result.polished)
         suggestedAssets = ranked.isEmpty ? photoService.suggest(for: result.polished) : ranked
+        if let mediaOverride { suggestedAssets = mediaOverride }
 
         saveEntry(result: result)
         isPolishing = false

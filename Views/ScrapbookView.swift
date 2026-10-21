@@ -11,33 +11,29 @@ struct ScrapbookView: View {
     var heading: String = "Scrapbook Preview"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(heading).font(.headline)
-            if assets.isEmpty {
+        // Peppered layout: text chunks and media alternate down the page
+        // (ScrapbookLayout decides the sequence; media alternates
+        // right/left, videos full width) instead of one text card followed
+        // by a photo dump.
+        let blocks = ScrapbookLayout.blocks(text: text,
+                                            mediaIsVideo: assets.map { $0.mediaType == .video })
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(heading).font(Theme.display(17)).foregroundStyle(Theme.ink)
+            if blocks.isEmpty {
                 ScrapbookCard {
                     Text(text).font(.body)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                ForEach(Array(assets.enumerated()), id: \.offset) { i, asset in
-                    ScrapbookCard {
-                        if i == 0 {
-                            HStack(alignment: .top, spacing: 12) {
-                                Text(text)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .multilineTextAlignment(.leading)
-                                    .font(.body)
-                                AssetThumbnailView(asset: asset)
-                                    .frame(width: 130, height: 100)
-                            }
-                        } else {
-                            // Later cards are media-led: the text lives on the
-                            // first card only (an empty text column here was
-                            // a layout bug - half-empty cards).
-                            AssetThumbnailView(asset: asset)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 180)
+                ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                    switch block {
+                    case .text(let chunk):
+                        ScrapbookCard {
+                            Text(chunk).font(.body)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                    case .media(let index, let fullWidth, let alignRight):
+                        mediaBlock(asset: assets[index], fullWidth: fullWidth, alignRight: alignRight)
                     }
                 }
             }
@@ -47,6 +43,22 @@ struct ScrapbookView: View {
             ForEach(placeholders.filter { !$0.isResolved }) { p in
                 PlaceholderRow(note: p.note, isResolved: p.isResolved)
             }
+        }
+    }
+}
+
+extension ScrapbookView {
+    /// One peppered media card, tucked to the right or left of the page
+    /// (videos ignore the tuck and span full width).
+    fileprivate func mediaBlock(asset: PHAsset, fullWidth: Bool, alignRight: Bool) -> some View {
+        HStack(spacing: 0) {
+            if alignRight && !fullWidth { Spacer(minLength: 64) }
+            ScrapbookCard {
+                AssetThumbnailView(asset: asset)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: fullWidth ? 230 : 185)
+            }
+            if !alignRight && !fullWidth { Spacer(minLength: 64) }
         }
     }
 }
