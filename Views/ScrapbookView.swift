@@ -56,7 +56,7 @@ private struct ScrapbookCard<Content: View>: View {
     var body: some View {
         content
             .padding(12)
-            .background(Color(.systemBackground))
+            .background(Theme.card)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
     }

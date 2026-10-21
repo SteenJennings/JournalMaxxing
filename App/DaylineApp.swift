@@ -25,5 +25,6 @@ struct ContentView: View {
             TrendsView().tabItem { Label("Trends", systemImage: "chart.line.uptrend.xyaxis") }
             DataView().tabItem { Label("Data", systemImage: "externaldrive") }
         }
+        .tint(Theme.accent)
     }
 }

@@ -65,6 +65,7 @@ struct DataView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden).background(Theme.paper)
             .navigationTitle("Data")
         }
     }
