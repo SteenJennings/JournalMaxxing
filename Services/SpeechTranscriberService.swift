@@ -84,6 +84,7 @@ final class SpeechTranscriberService: ObservableObject {
 
             guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module]) else {
                 errorMessage = "No compatible audio format for transcription."
+                Log.event("Speech", "no compatible audio format for transcription")
                 return
             }
             try await session.prepareToAnalyze(in: format)

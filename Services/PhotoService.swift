@@ -39,6 +39,28 @@ class PhotoService: ObservableObject {
         Log.event("Photos", "fetched \(arr.count) assets for \(start.formatted(date: .abbreviated, time: .omitted))")
     }
 
+    /// Day fetch usable without an instance (the day browser and the entry
+    /// editor ask for arbitrary dates; Today uses the instance path).
+    static func assets(on date: Date) async -> [PHAsset] {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        guard status == .authorized || status == .limited else {
+            Log.event("Photos", "browser fetch denied (authorization \(status.rawValue))")
+            return []
+        }
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: date)
+        guard let end = cal.date(byAdding: .day, value: 1, to: start) else { return [] }
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "creationDate >= %@ AND creationDate < %@",
+                                        start as NSDate, end as NSDate)
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+        let result = PHAsset.fetchAssets(with: options)
+        var arr: [PHAsset] = []
+        result.enumerateObjects { a, _, _ in arr.append(a) }
+        Log.event("Photos", "browser fetched \(arr.count) assets for \(start.formatted(date: .abbreviated, time: .omitted))")
+        return arr
+    }
+
     /// Fast fallback: no analysis, first few assets. Used while ranked
     /// suggestions are still computing.
     func suggest(for transcript: String) -> [PHAsset] {
