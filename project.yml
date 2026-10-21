@@ -37,6 +37,7 @@ targets:
     sources: [Tests]
     settings:
       base:
+        SWIFT_VERSION: "5.0"
         PRODUCT_BUNDLE_IDENTIFIER: com.steenjennings.dayline.tests
     dependencies:
       - target: Dayline
