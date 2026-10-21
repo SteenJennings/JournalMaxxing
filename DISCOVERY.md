@@ -257,6 +257,98 @@ embeddings for text could catch cases with no shared vocabulary at all
 forward-compatible with an embedding column. Do **not** start here: the
 model-planned taxonomy search is more explainable and directly testable.
 
+## The Discover page — "Memory Lane" (deep design)
+
+The page's job is different from Today's (write) and Year's (browse by
+time): **resurface the past so it feels alive, and make anything in it
+findable in seconds.** Working name for the experience: *Memory Lane*.
+(Tab label still open — Discover / Memories / Lane; see Open questions.
+Page title can be "Memory Lane" regardless of tab label.)
+
+Visual language: Photos is dark and photo-first; Dayline's version
+should stay editorial — photo covers, but serif display titles, paper
+backgrounds, rust accents. A memory should read like a page from the
+journal, not a stock gallery.
+
+### Page layout, top to bottom
+
+1. **Search** — pinned at top. The model-planned search from above,
+   with expansion chips and match reasons. Below the field before typing:
+   **Recent searches** and **Suggested searches** generated from his own
+   data (concept × place combos that actually exist: "cardio",
+   "dinners in Thailand", "beach days", "days with Malia"). Suggestions
+   are only ever phrases the index can answer well.
+2. **Memory Lane hero** — one featured memory, full-width: hero photo,
+   serif title, date context line ("One year ago today" / "From your
+   Thailand trip"), two-line entry snippet, mood chip if positive.
+   Changes daily; swiping cycles 2–3 alternates. Tap → Story view.
+3. **Trips rail** — cards: cover photo, place-hierarchy title
+   ("Puerto Vallarta"), date range, entry count, days count.
+4. **Themes rail** — concept collections with entry counts; ordered by
+   a blend of frequency and recency so living themes surface, dead ones
+   sink. ("Gym — 42 this year", "Dinners — 18".)
+5. **Places rail** — city/country cards; cover = best photo there;
+   subtitle shows both levels ("Phuket · Thailand").
+6. **People in words rail** — name collections derived from *text
+   mentions only*, labeled honestly ("Malia — mentioned in 63 entries").
+   No face claims; this is a journal, names in words are the signal.
+7. **Unwritten memories rail** — days with strong photos but **no entry**
+   (photo-only days from the library, clustered): "Oct 12 — 23 photos at
+   the beach, no entry." Tap → jumps to that day in Today to backfill,
+   with the photos pre-loaded. This is the page's growth engine: the
+   past asks to be written. (Settles the photo-only-days question as
+   *yes, but as prompts*, not as fake entries.)
+8. **Insights strip** — Trends, matured: gentle, descriptive facts
+   computed from concepts + mood + dates. "12 journal days this month."
+   "Gym days cluster on Tuesdays." "Your happiest tags: beach, friends."
+   Descriptive only — no coaching, no streaks-shaming, no scores.
+9. **All memories river** — below the rails, everything in reverse
+   chronological order, grouped by month, Timeline cards. The rails are
+   shortcuts; the river is the guarantee nothing is hidden by the
+   curation.
+
+Rails appear only when they clear a usefulness threshold (Trips ≥ 1,
+Themes ≥ 3 entries, Places ≥ 2 entries); a two-week-old journal shows
+search + hero + river, not a page of empty sections.
+
+### The resurfacing engine (how the hero memory is picked)
+
+Computed on first page open of the day, then cached for the day
+(`ResurfaceState`: featured IDs, shown history, hidden days/themes).
+
+Scoring, in order:
+1. **Anniversaries** — same calendar day, prior years first, then prior
+   months ("6 months ago today").
+2. **Trip highlights** — best entry from a trip that ended ~1/3/6/12
+   months ago.
+3. **Strong days** — high media quality + long entry + positive mood.
+
+Guardrails (non-negotiable):
+- **Never hero** entries whose concepts include Sick, Pain / Injury,
+  Therapy, Doctor, Dentist, or whose mood is negative. Sad days remain
+  findable and in the river — they're just never the cheerful postcard.
+- **No repeats** within 60 days; "Not this memory" hides it forever;
+  "Less like this" mutes that theme/place for hero purposes only.
+- **One memory a day, in-app only.** No notifications, no badges — the
+  page rewards opening; it never nags. (If Steen ever wants a morning
+  memory, that's a separate opt-in.)
+
+### Story view (what a memory/trip/theme opens into)
+
+Reuse the scrapbook machinery across days: a continuous editorial page —
+cover, title, rule subtitle — then entries in date order, each day a
+section with its text chunks interleaved with its best photos
+(`ScrapbookLayout`, videos full-width, same as Today). A trip reads as
+one story instead of five disconnected entries. Controls: jump-to-day,
+share/export the story (image or PDF) as a later extra.
+
+### Management, revisited
+
+Edit mode on the page: reorder rails, pin any collection into a
+**Pinned** row above Trips (Photos parity), hide collections or whole
+rail types. All of it lives in `CollectionPrefs` + `ResurfaceState`;
+collections remain computed, only preferences persist.
+
 ## Information architecture
 
 - **Trends tab → "Explore" tab**: Search field pinned on top; rails:
@@ -303,17 +395,22 @@ model-planned taxonomy search is more explainable and directly testable.
 4. **AssetFeatureCache + Places/Trips** — persist Vision/location facets;
    geocode hierarchy (Phuket ⊂ Thailand); home derivation; trip
    clustering; photo evidence joins search and themes.
-5. **On This Day + Pinned/Hidden/Rename** — the journal-native rail and
-   the management layer.
+5. **Discover page / Memory Lane** — the rails per the deep design
+   above, the hero resurfacing engine (anniversaries → trips → strong
+   days, with the sensitivity guardrails and ResurfaceState), Story
+   view, the Unwritten memories rail, the insights strip, and the
+   Pinned/Hidden/Rename management layer.
 6. *(Optional)* **Embedding layer** — MobileCLIP/contextual embeddings;
    only with evidence that taxonomy-planned search is still missing
    things Steen looks for.
 
 ## Open questions for Steen (answer when we build, not now)
 
-- Should Trips require journal entries, or also surface photo-only days
-  (days you shot but never journaled — Photos does; Dayline could offer
-  "you never wrote about Puerto Vallarta day 2")?
+- Tab/page name: Discover, Memories, or Lane? (The design above uses
+  "Memory Lane" as the page title whichever tab label wins.)
+- Photo-only days are proposed as the **Unwritten memories** rail —
+  prompts to backfill, *not* auto-generated fake entries, and Trips
+  stay entry-based. Confirm that split feels right.
 - Is "People" worth doing via *names in text* (entries mentioning Malia)
   as pseudo-collections, given face identity is off-limits?
 - Taxonomy governance: fixed at ~100 concepts curated by us, or should
