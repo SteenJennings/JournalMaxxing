@@ -36,6 +36,56 @@ enum PhotoRanker {
                                    matchedLabels: matched)
     }
 
+    /// Quality alone, ignoring the text: aesthetics + people + favorite,
+    /// minus the utility penalty. This drives the best-of-day pool - the
+    /// sunset shot the entry never mentioned but the page still deserves.
+    static func qualityScore(features: PhotoFeatures) -> Double {
+        let aesthetic = ((features.aestheticScore ?? 0) + 1.0) / 2.0 * 0.30
+        let people = features.faceCount > 0 ? 0.10 : 0.0
+        let favorite = features.isFavorite ? 0.10 : 0.0
+        var quality = aesthetic + people + favorite
+        if features.isUtility { quality -= 0.30 }
+        return min(max(quality, 0), 1)
+    }
+
+    /// Two-pool selection (Steen's editorial rule, 2026-10-20): most slots
+    /// go to photos that match what the text says; the remaining slots go
+    /// to the day's best photos on quality alone, mentioned or not. If
+    /// nothing matches the text, the whole set is best-of-day. Returned in
+    /// pick order: matched by relevance, then quality picks by quality.
+    static func select<T>(items: [(item: T, features: PhotoFeatures, scored: ScoredPhotoFeatures)],
+                          limit: Int,
+                          matchedFraction: Double = 0.6) -> [T] {
+        guard limit > 0, !items.isEmpty else { return [] }
+        let indexed = Array(items.enumerated())
+        let matchedOffsets = indexed
+            .filter { !$0.element.scored.matchedLabels.isEmpty }
+            .sorted { a, b in
+                if a.element.scored.matchedLabels.count != b.element.scored.matchedLabels.count {
+                    return a.element.scored.matchedLabels.count > b.element.scored.matchedLabels.count
+                }
+                return a.element.scored.score > b.element.scored.score
+            }
+            .map(\.offset)
+        let matchedSlots = min(matchedOffsets.count,
+                               max(1, Int(ceil(Double(limit) * matchedFraction))))
+        var chosen = Array(matchedOffsets.prefix(matchedSlots))
+        if chosen.count < limit {
+            let chosenSet = Set(chosen)
+            let rest = indexed
+                .filter { !chosenSet.contains($0.offset) }
+                .sorted { a, b in
+                    let qa = qualityScore(features: a.element.features)
+                    let qb = qualityScore(features: b.element.features)
+                    if qa != qb { return qa > qb }
+                    return a.element.scored.score > b.element.scored.score
+                }
+                .map(\.offset)
+            chosen.append(contentsOf: rest.prefix(limit - chosen.count))
+        }
+        return chosen.map { items[$0].item }
+    }
+
     static func matchedLabels(features: PhotoFeatures, transcript: String) -> [String] {
         let words = Set(
             transcript.lowercased()

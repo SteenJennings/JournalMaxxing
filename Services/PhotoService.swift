@@ -75,7 +75,7 @@ class PhotoService: ObservableObject {
         let candidates = Array(todaysAssets.prefix(24))
         Log.event("Photos", "rankedSuggest: \(candidates.count) candidates from \(todaysAssets.count) assets")
         guard !candidates.isEmpty else { Log.event("Photos", "rankedSuggest: NO candidates (empty day or no permission)"); return [] }
-        var scored: [(asset: PHAsset, score: Double)] = []
+        var items: [(item: PHAsset, features: PhotoFeatures, scored: ScoredPhotoFeatures)] = []
         for asset in candidates {
             guard let thumb = await AssetMediaLoader.image(
                 for: asset, targetSize: CGSize(width: 260, height: 260)) else { continue }
@@ -83,11 +83,14 @@ class PhotoService: ObservableObject {
                                                  isFavorite: asset.isFavorite,
                                                  isVideo: asset.mediaType == .video)
             let result = PhotoRanker.score(features: features, transcript: transcript)
-            scored.append((asset, result.score))
+            items.append((asset, features, result))
         }
-        if scored.isEmpty { Log.event("Photos", "rankedSuggest: 0 scored, using prefix fallback"); return suggest(for: transcript) }
-        let ranked = scored.sorted { $0.score > $1.score }
-        Log.event("Photos", "rankedSuggest: \(ranked.count) scored, top \(String(format: "%.2f", ranked.first?.score ?? 0))")
-        return ranked.prefix(limit).map(\.asset)
+        if items.isEmpty { Log.event("Photos", "rankedSuggest: 0 scored, using prefix fallback"); return suggest(for: transcript) }
+        // Two-pool selection: most slots to text matches, the rest to the
+        // day's best photos whether the text mentioned them or not.
+        let picked = PhotoRanker.select(items: items, limit: limit)
+        let matchedAvailable = items.filter { !$0.scored.matchedLabels.isEmpty }.count
+        Log.event("Photos", "rankedSuggest: two-pool picked \(picked.count) of \(items.count) scored (text-matched available: \(matchedAvailable))")
+        return picked
     }
 }
