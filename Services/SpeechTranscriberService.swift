@@ -62,8 +62,10 @@ final class SpeechTranscriberService: ObservableObject {
 
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
             errorMessage = "Speech transcription is not available for your language/region yet."
+            Log.event("Speech", "no supported transcription locale equivalent to \(Locale.current.identifier) - unavailable (common in simulators)")
             return
         }
+        Log.event("Speech", "transcription locale supported: \(locale.identifier)")
 
         do {
             let module = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
