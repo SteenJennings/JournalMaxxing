@@ -36,13 +36,34 @@ jobs:
       - name: Generate project
         run: xcodegen generate
 
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          # A name-based destination is brittle: one runner (2026-10-20,
+          # commit d168955) had no matching simulator at all and the run
+          # died before compiling. Resolve the first available iPhone
+          # simulator's UDID instead and build against that.
+          SIM_ID=$(xcrun simctl list devices available --json | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for runtime, devices in data.get('devices', {}).items():
+              if 'iOS' not in runtime:
+                  continue
+              for d in devices:
+                  if d.get('isAvailable') and 'iPhone' in d.get('name', ''):
+                      print(d['udid']); sys.exit(0)
+          sys.exit(1)
+          ")
+          echo "Using simulator: $SIM_ID"
+          echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
+
       - name: Build and test (simulator, unsigned)
         id: build
         run: |
           set -o pipefail
           xcodebuild test \
             -scheme Dayline \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+            -destination 'platform=iOS Simulator,id=${{ steps.sim.outputs.id }}' \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log
 
       - name: Report failure as an issue

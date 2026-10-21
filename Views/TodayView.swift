@@ -93,14 +93,6 @@ struct TodayView: View {
                                 .font(.subheadline).frame(maxWidth: .infinity)
                         }.buttonStyle(.bordered).tint(Theme.ink)
                     }
-                    .onChange(of: selectedItems) { _, items in
-                        let ids = items.compactMap(\.itemIdentifier)
-                        guard !ids.isEmpty else { return }
-                        let picked = AssetMediaLoader.fetchAssets(localIdentifiers: ids)
-                        for a in picked where !suggestedAssets.contains(where: { $0.localIdentifier == a.localIdentifier }) {
-                            suggestedAssets.append(a)
-                        }
-                    }
 
                     if !tags.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -136,6 +128,14 @@ struct TodayView: View {
                  }
              }
              .sensoryFeedback(.success, trigger: savedMessage)
+             .onChange(of: selectedItems) { _, items in
+                 let ids = items.compactMap(\.itemIdentifier)
+                 guard !ids.isEmpty else { return }
+                 let picked = AssetMediaLoader.fetchAssets(localIdentifiers: ids)
+                 for a in picked where !suggestedAssets.contains(where: { $0.localIdentifier == a.localIdentifier }) {
+                     suggestedAssets.append(a)
+                 }
+             }
              .sheet(isPresented: $showDayBrowser) {
                  DayMediaBrowserView(
                      date: Date(),
