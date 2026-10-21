@@ -4,7 +4,7 @@ import Photos
 
 struct TimelineView: View {
     @Query(sort: \DayEntry.date, order: .reverse) var entries: [DayEntry]
-    let cols = [GridItem(.adaptive(minimum: 110), spacing: 8)]
+    let cols = [GridItem(.adaptive(minimum: 150), spacing: 10)]
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -14,14 +14,14 @@ struct TimelineView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             TimelineThumbnail(localId: e.highlightLocalId ?? e.mediaLocalIds.first)
                                 .frame(height: 110)
-                            Text(e.date, style: .date).font(.caption2).bold()
+                            Text(e.date, style: .date).font(.system(size: 11, weight: .bold, design: .serif))
                             Text(e.polishedText).font(.caption2).lineLimit(2)
                             if !e.projectTags.isEmpty { Text(e.projectTags.map { "#\($0)" }.joined(separator: " ")).font(.caption2).foregroundStyle(.blue) }
-                        }.padding(6).background(.background).clipShape(RoundedRectangle(cornerRadius: 8)).shadow(radius: 1)
+                        }.padding(8).background(Theme.card).clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
                       }.buttonStyle(.plain)
                     }
                 }.padding()
-            }.navigationTitle("Year").overlay { if entries.isEmpty { ContentUnavailableView("No entries yet", systemImage: "calendar", description: Text("Start in Today tab")) } }
+            }.background(Theme.paper).navigationTitle("Year").overlay { if entries.isEmpty { ContentUnavailableView("No entries yet", systemImage: "calendar", description: Text("Start in Today tab")) } }
         }
     }
 }
@@ -62,11 +62,18 @@ struct TrendsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     ForEach(tags, id: \.self) { tag in
-                        Button(tag) { Task { summary = await summarizer.trendSummary(entries: Array(entries), tag: tag) } }
+                        Button { Task { summary = await summarizer.trendSummary(entries: Array(entries), tag: tag) } } label: {
+                            HStack {
+                                Text(tag).foregroundStyle(Theme.ink)
+                                Spacer()
+                                Text("\(entries.filter { $0.projectTags.contains(tag) }.count) days")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
                 if !summary.isEmpty { Section("Insight") { Text(summary) } }
-            }.navigationTitle("Trends")
+            }.scrollContentBackground(.hidden).background(Theme.paper).navigationTitle("Trends")
         }
     }
 }

@@ -17,17 +17,24 @@ struct TodayView: View {
     @State var suggestedAssets: [PHAsset] = []
     @State var entryLinks: [String] = []
     @State var selectedItems: [PhotosPickerItem] = []
+    @State var recordingSeconds = 0
+
+    var elapsedString: String { String(format: "%d:%02d", recordingSeconds / 60, recordingSeconds % 60) }
+    var wordCount: Int { transcript.split(whereSeparator: { $0.isWhitespace }).count }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(Date(), style: .date).font(.headline).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Date().formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                            .font(Theme.display(24)).foregroundStyle(Theme.ink)
+                        Text("One page, every day.").font(.caption).foregroundStyle(.secondary)
+                    }
 
                     TextField("Talk about your day...", text: $transcript, axis: .vertical)
-                        .lineLimit(4...12)
-                        .padding()
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .lineLimit(5...14)
+                        .journalCard(padding: 12)
                         .onChange(of: transcriber.transcript) { _, newValue in
                             if transcriber.isRecording || !newValue.isEmpty { transcript = newValue }
                         }
@@ -36,22 +43,44 @@ struct TodayView: View {
                         Text(err).font(.caption).foregroundStyle(.red)
                     }
 
-                    HStack {
-                        Button { transcriber.toggle() } label: {
-                            Label(transcriber.isRecording ? "Stop" : (transcriber.isStarting ? "Starting..." : "Speak"),
-                                  systemImage: transcriber.isRecording ? "stop.circle.fill" : "mic.fill")
+                    if transcriber.isRecording || transcriber.isStarting {
+                        HStack(spacing: 8) {
+                            Circle().fill(.red).frame(width: 9, height: 9)
+                                .symbolEffect(.pulse, options: .repeating, isActive: transcriber.isRecording)
+                            Text(transcriber.isStarting ? "Starting..." : "Listening - \(elapsedString)")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            if wordCount > 0 { Text("\(wordCount) words").font(.caption2).foregroundStyle(.secondary) }
                         }
-                        .buttonStyle(.bordered)
-                        .tint(transcriber.isRecording ? .red : .accentColor)
-
-                        Button { Task { await polishAndSave() } } label: {
-                            Label(isPolishing ? "Polishing..." : "Polish + Save", systemImage: "wand.and.stars")
-                        }.buttonStyle(.borderedProminent).disabled(transcript.isEmpty || isPolishing)
-
-                        PhotosPicker(selection: $selectedItems, matching: .any(of: [.images, .videos])) {
-                            Label("Add", systemImage: "photo.badge.plus")
-                        }.buttonStyle(.bordered)
                     }
+
+                    HStack {
+                        Spacer()
+                        PhotosPicker(selection: $selectedItems, matching: .any(of: [.images, .videos])) {
+                            Image(systemName: "photo.badge.plus")
+                                .font(.title3).foregroundStyle(Theme.ink)
+                                .frame(width: 48, height: 48)
+                                .background(Theme.card, in: Circle())
+                                .overlay(Circle().stroke(Theme.ink.opacity(0.08)))
+                        }
+                        Button { transcriber.toggle() } label: {
+                            Image(systemName: transcriber.isRecording ? "stop.fill" : "mic.fill")
+                                .font(.system(size: 26, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 68, height: 68)
+                                .background(transcriber.isRecording ? Color.red : Theme.accent, in: Circle())
+                                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 3)
+                        }
+                        .accessibilityLabel(transcriber.isRecording ? "Stop recording" : "Start recording")
+                        Color.clear.frame(width: 48, height: 48)
+                        Spacer()
+                    }
+
+                    Button { Task { await polishAndSave() } } label: {
+                        Label(isPolishing ? "Polishing..." : "Polish + Save", systemImage: "wand.and.stars")
+                            .frame(maxWidth: .infinity)
+                    }.buttonStyle(.borderedProminent).tint(Theme.accent)
+                     .disabled(transcript.isEmpty || isPolishing)
                     .onChange(of: selectedItems) { _, items in
                         let ids = items.compactMap(\.itemIdentifier)
                         guard !ids.isEmpty else { return }
@@ -84,7 +113,17 @@ struct TodayView: View {
                     }
                 }.padding()
             }.navigationTitle("Today")
+             .background(Theme.paper)
              .task { photoService.requestPermissionAndFetch() }
+             .task(id: transcriber.isRecording) {
+                 recordingSeconds = 0
+                 guard transcriber.isRecording else { return }
+                 while !Task.isCancelled {
+                     try? await Task.sleep(for: .seconds(1))
+                     recordingSeconds += 1
+                 }
+             }
+             .sensoryFeedback(.success, trigger: savedMessage)
         }
     }
 
