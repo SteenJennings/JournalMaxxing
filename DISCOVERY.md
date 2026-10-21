@@ -94,40 +94,168 @@ Every collection object is `{ id, kind, title, subtitle (rule in words),
 coverAssetId, entryDates, count }` — **the subtitle states the rule**
 ("5 entries tagged gym · Oct 2026") so auto-creation is never mysterious.
 
+## The concept taxonomy (Steen's direction)
+
+Instead of letting classification invent free-form tags, Dayline gets a
+**controlled vocabulary of roughly 100 canonical concepts**. The AI can
+only classify entries into concepts from that list. This is the spine for
+Themes, collections, and search.
+
+Design rules:
+
+- **Multi-label, not one bucket.** A Phuket dinner entry can be Dinner +
+  Dining Out + Travel + Vacation + Beach. A leg-day entry can be Gym +
+  Strength Training + Fitness.
+- **Broad rollups and specific concepts coexist.** Fitness is a useful
+  rollup; Running, Cardio, Strength Training, Gym, and Basketball are
+  more specific siblings/children.
+- **Concepts are separate from detail tags.** Concepts answer "what kind
+  of day/activity was this?" Free-form detail can still hold names and
+  specifics ("Bay Club", "Mission Taqueria", a person or restaurant).
+- **The taxonomy is data, not code.** A versioned JSON file holds each
+  concept's stable ID, display name, group, aliases, text cues, Vision
+  label mappings, and parent rollups. Trial and error means editing that
+  file and reclassifying, not rewriting the app.
+- **Every assignment carries provenance.** Store concept ID + source
+  (model text classification, keyword fallback, Vision, place/date, or
+  manual correction) + confidence. Collections and search can then say
+  *why* an entry belongs, and bad rules can be found and pruned.
+- **Manual corrections win.** If Steen removes Gym from an entry, later
+  automatic passes do not silently put it back.
+
+### Classification sources
+
+1. **Entry-time model classification:** at polish time, Foundation Models
+   choose applicable concepts from the taxonomy using the transcript.
+   Guided/constrained output should return concept IDs only.
+2. **Deterministic fallback:** aliases and text cues map words to the
+   same concepts when the model is unavailable ("deadlift" →
+   Strength Training + Gym + Fitness).
+3. **Photo classification:** persisted Vision labels map to concepts
+   (`swimming_pool` → Pool + Swimming; `bicycle` → Cycling + Cardio).
+4. **Place/date signals:** a day clustered away from home can add Travel;
+   leisure signals can add Vacation; geocoded country/place remains a
+   separate facet rather than becoming a concept.
+5. **Manual edits:** Steen can add/remove concepts on an entry; these are
+   the ground truth for trial-and-error tuning.
+
+### Starter taxonomy draft (100 concepts, for trial and error)
+
+This is a starting point grounded in Steen's actual life, not a locked
+list. Groups are for browsing and rollups; concepts remain flat,
+multi-label IDs underneath.
+
+- **Movement & Sport (16):** Fitness, Gym, Strength Training, Cardio,
+  Running, Cycling, Swimming, Basketball, Hiking, Walking, Skiing,
+  Snowboarding, Golf, Climbing, Yoga, Stretching & Mobility
+- **Food & Drink (10):** Dining Out, Dinner, Brunch, Cooking, Baking,
+  Coffee, Dessert, Drinks, Groceries, Takeout
+- **Travel & Outdoors (14):** Travel, Vacation, Road Trip, Flight,
+  Day Trip, City Exploring, Outdoors, Beach, Pool, Camping, Nature,
+  Mountains, Winter Trip, Hotel Stay
+- **Social (12):** Social, Family, Friends, Partner, Date Night, Party,
+  Celebration, Wedding, Hosting, Visitors, Group Trip, Holiday
+- **Work & Making (10):** Work, Meetings, Team Event, Deep Work, Career,
+  Coding, Side Project, Learning, Planning, Networking
+- **Home & Daily Life (12):** Home, Chores, Errands, Shopping, Finances,
+  House Hunting, Car, Pets, Gardening, Home Project, Morning Routine,
+  Evening Reset
+- **Health & Body (11):** Health, Doctor, Dentist, Physical Therapy,
+  Therapy, Pain / Injury, Sick, Sleep, Rest & Recovery, Self-Care,
+  Grooming
+- **Leisure & Culture (15):** Journaling, Reading, Writing, Movies, TV,
+  Music, Concert, Gaming, Photography, Art & Culture, Museum,
+  Sports Watching, Relaxing, Live Event, Market
+
+Expected tuning: merge concepts that never fire, split concepts that
+become catch-alls, and adjust aliases/cues from real misses. The target
+is "about 100 useful concepts," not exactly 100 for its own sake.
+
 ## Search design
 
 One search field (lives in the future Explore tab; see IA) over a single
-`SearchIndex` built from entries + AssetFeatureCache:
+`SearchIndex` built from entries + AssetFeatureCache. Search has three
+layers: a model that interprets the query, a deterministic executor that
+runs it, and visible match reasons.
 
-- **Matchers per token:** exact tag → concept-expanded tags → entry text
-  (raw + polished, word-boundary contains) → media labels (via cache) →
-  place names → mood → date phrases.
-- **Date phrases:** "october", "last summer", "2025", "last week" parsed
-  with NSDataDetector + a small grammar for month/season/year names;
-  treated as a filter facet combined with other tokens.
-- **Concept map (the "Gym" problem):** a small curated, editable table:
-  `gym → gym, workout, leg day, deadlift, squat, lifting, run, basketball…`.
-  Search and Themes both expand through it. Seeded with ~30 concepts from
-  Steen's actual tag vocabulary (visible in Trends), stored as data
-  (JSON in the app bundle, later editable) — not hardcoded logic.
-- **Result shape (Photos-like):** a matching *collection card first*
-  ("Gym — 14 entries, Oct 2025–Oct 2026 →"), then matching entries as
-  Timeline cards, newest first, with the matched snippet highlighted.
-  Ranking: facet strength (tag > text > label) then recency.
-- **"Gym" walkthrough:** token `gym` → tag match on entries tagged gym/
-  workout → concept expansion catches a "leg day" entry whose text says
-  *deadlift* and whose photos are Vision-labeled *weightlifting* →
-  place/date facets idle → 14 results + a Gym theme collection card on
-  top. Zero ML models required for v1 of search.
+### 1. Model query planner ("agentic" fuzzy matching, constrained)
 
-### Semantic upgrade path (later, only if literal search disappoints)
-MobileCLIP (Apple's open CoreML CLIP) embeddings for media + NLContextual
-embeddings for text would make "gym" match bench-press photos with no
-shared vocabulary, and "that cozy cabin weekend" match an untagged trip.
-This is the parked Phase-2 item from FEASIBILITY.md; the facet index and
-AssetFeatureCache are forward-compatible with it (add an embedding blob
-column). Do **not** start here — literal + concepts is explainable,
-testable, and probably enough at journal scale.
+At search time, Foundation Models translate natural language into a
+**structured query plan constrained to the taxonomy**. The model does not
+invent tags or query the database freely. A plan contains:
+
+- exact concept IDs
+- related concept IDs (siblings, children, and rollups), each with a
+  relationship strength
+- text terms and stems/lemmas to scan in raw + polished entry text
+- Vision/media labels that would support the query
+- place, date, mood, person-name, and media-type facets
+- an optional broadening step if the first pass returns too little
+
+The executor validates every concept ID against the taxonomy, runs the
+plan, and can run one model-proposed broadening pass when results are
+empty or very sparse. If results are abundant, specific matches stay
+ranked above broad related matches rather than flooding the page.
+
+The UI shows the expansion as removable chips — e.g. **Cardio × Running
+× Gym × "treadmill"** — so fuzzy search remains inspectable rather than
+a black box. A lexical fallback (aliases, stemming/lemmatization, and
+typo tolerance) covers model-unavailable cases.
+
+### 2. Deterministic matching and ranking
+
+Signals, strongest to weakest:
+
+1. manually assigned or exact concept match
+2. model-classified exact concept
+3. text term in the polished or raw transcript
+4. related concept (child/sibling before broad rollup)
+5. matching Vision/media label in AssetFeatureCache
+6. generic parent/rollup alone
+
+Place/date facets act as filters when the query names them ("in
+Thailand", "last October"). Result shape remains Photos-like: a matching
+collection card first ("Cardio — 18 entries"), then Timeline cards with
+the matched snippet and a small reason ("Running · text mentions 'ran'").
+
+### "Cardio" walkthrough
+
+Query: **cardio**
+
+The planner emits approximately:
+
+- exact concept: Cardio
+- related concepts: Running, Cycling, Swimming, Gym, Fitness
+- text terms: cardio, run, ran, running, treadmill, elliptical, rowing,
+  bike ride, swim
+- media labels: treadmill, bicycle, swimming_pool, track, gym equipment
+
+An entry dictated as "went for a run before work" is found even if the
+word *cardio* never appears: entry-time classification assigned Running
++ Cardio + Fitness, and query-time expansion would catch the text anyway.
+A strength-only gym entry may appear much lower through Gym/Fitness, but
+it should not outrank explicit running/cycling/swimming entries. That
+ranking distinction is one of the main trial-and-error tests.
+
+### "Dinner in Thailand" walkthrough
+
+The planner separates facets instead of treating the phrase as one tag:
+
+- concepts: Dinner + Dining Out
+- place facet: country = Thailand (Phuket is stored as a child place)
+- media labels: food / restaurant / table
+- optional relation: entries inside the Thailand trip cluster rank first
+
+This works when the dictated text only says "dinner" and the photo's GPS
+supplies Phuket/Thailand, or when the text says Thailand and the photo
+has no GPS.
+
+### Semantic upgrade path (later, only if this still misses)
+MobileCLIP (Apple's open CoreML CLIP) embeddings for media + contextual
+embeddings for text could catch cases with no shared vocabulary at all
+("that cozy cabin weekend"). The taxonomy + AssetFeatureCache design is
+forward-compatible with an embedding column. Do **not** start here: the
+model-planned taxonomy search is more explainable and directly testable.
 
 ## Information architecture
 
@@ -155,21 +283,31 @@ testable, and probably enough at journal scale.
   full backfill button in Data tab with progress + cancel.
 - Collections: recomputed on Explore appearance and after saves; at
   journal scale this is milliseconds. Geocoding amortized and cached.
-- No background daemons, no network, nothing leaves the device —
-  consistent with Dayline's local/$0 constraints.
+- No background daemons and no third-party backend. One nuance:
+  CLGeocoder resolves coordinates through Apple's geocoding service, so
+  place-name lookup is not strictly offline; cache aggressively by
+  location cluster. If strict fully-offline places ever matter, the
+  alternative is bundled coarse geographic boundary data for
+  country/region lookup. Everything else here is on-device and $0.
 
 ## Phasing (for when the core app is proven)
 
-1. **Search v1** — text/tags/mood/date-phrase search over entries +
-   result grouping. (No new storage; proves the query model.)
-2. **Themes** — concept map + tag-normalized theme collections in a
-   renamed Explore tab; Trends content folds in.
-3. **AssetFeatureCache + Places/Trips** — persist facets; geocode cache;
-   home derivation; trip clustering.
-4. **On This Day + Pinned/Hidden/Rename** — the journal-native rail and
+1. **Taxonomy + entry classification** — ship the ~100-concept data file;
+   classify entries at polish/save with provenance and manual override;
+   backfill existing entries; build theme collections from concepts.
+2. **Deterministic search** — exact concepts, text terms, mood, dates,
+   and result grouping/reasons. (Proves the index and ranking.)
+3. **Model query planner** — natural-language plans constrained to the
+   taxonomy, visible expansion chips, one broadening pass for sparse
+   results, and the trial-query suite (Cardio, Gym, Thailand dinners…).
+4. **AssetFeatureCache + Places/Trips** — persist Vision/location facets;
+   geocode hierarchy (Phuket ⊂ Thailand); home derivation; trip
+   clustering; photo evidence joins search and themes.
+5. **On This Day + Pinned/Hidden/Rename** — the journal-native rail and
    the management layer.
-5. *(Optional)* **Semantic layer** — MobileCLIP media embeddings; only
-   with evidence that literal search is missing things Steen looks for.
+6. *(Optional)* **Embedding layer** — MobileCLIP/contextual embeddings;
+   only with evidence that taxonomy-planned search is still missing
+   things Steen looks for.
 
 ## Open questions for Steen (answer when we build, not now)
 
@@ -178,5 +316,10 @@ testable, and probably enough at journal scale.
   "you never wrote about Puerto Vallarta day 2")?
 - Is "People" worth doing via *names in text* (entries mentioning Malia)
   as pseudo-collections, given face identity is off-limits?
-- Concept map: fully curated by us, or should the app propose new
-  concepts from his tags for one-tap approval?
+- Taxonomy governance: fixed at ~100 concepts curated by us, or should
+  the app notice recurring unclassified themes and *propose* a new
+  concept for one-tap approval (never silently adding it)?
+- Trial-and-error surface: is a small "Concept Lab" worth building —
+  recent entries with their assigned concepts + confidences, one-tap
+  add/remove, and a saved test-query list — or is reviewing corrections
+  through normal entry editing enough?
