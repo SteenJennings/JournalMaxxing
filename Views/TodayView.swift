@@ -24,6 +24,8 @@ struct TodayView: View {
     /// Set when Steen hand-picks media in the day browser; wins over the
     /// auto-ranked suggestions at save time (auto stays the default).
     @State var mediaOverride: [PHAsset]?
+    @State var isEditingPolished = false
+    @State var preEditPolished = ""
 
     /// The day this screen is working on. The calendar, backfill, day
     /// rollover, photo fetch, ranking, browser, and save all scope to it -
@@ -141,10 +143,41 @@ struct TodayView: View {
                     }
 
                     if !polished.isEmpty {
-                        ScrapbookView(text: polished,
-                                      assets: suggestedAssets,
-                                      linkURLs: entryLinks,
-                                      heading: "Scrapbook Preview")
+                        if isEditingPolished {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Edit entry text").font(Theme.display(15)).foregroundStyle(Theme.ink)
+                                TextField("Entry text", text: $polished, axis: .vertical)
+                                    .lineLimit(6...20)
+                                    .journalCard(padding: 12)
+                                HStack {
+                                    Button("Cancel") {
+                                        polished = preEditPolished
+                                        isEditingPolished = false
+                                    }.buttonStyle(.bordered)
+                                    Spacer()
+                                    Button("Save edits") {
+                                        persistPageEdits()
+                                        isEditingPolished = false
+                                    }.buttonStyle(.borderedProminent).tint(Theme.accent)
+                                }
+                            }
+                        } else {
+                            ScrapbookView(text: polished,
+                                          assets: suggestedAssets,
+                                          linkURLs: entryLinks,
+                                          heading: "Scrapbook Preview")
+                            HStack(spacing: 18) {
+                                Button {
+                                    preEditPolished = polished
+                                    isEditingPolished = true
+                                } label: { Label("Edit text", systemImage: "pencil").font(.caption) }
+                                Button { showDayBrowser = true } label: {
+                                    Label("Edit photos", systemImage: "photo.on.rectangle.angled").font(.caption)
+                                }
+                                Spacer()
+                            }
+                            .buttonStyle(.plain).foregroundStyle(Theme.accent)
+                        }
                     }
                 }.padding()
             }.navigationTitle("Today")
@@ -183,6 +216,9 @@ struct TodayView: View {
                  ) { chosen in
                      mediaOverride = chosen
                      suggestedAssets = chosen
+                     // If this day already has a saved entry, the new media
+                     // set sticks immediately - no re-polish needed.
+                     persistPageEdits()
                  }
              }
         }
@@ -247,6 +283,33 @@ struct TodayView: View {
             Log.event("Today", "day rolled over - moved to \(today.formatted(date: .abbreviated, time: .omitted))")
         } else {
             Log.event("Today", "day rolled over but a draft is in progress - staying put")
+        }
+    }
+
+    /// Write the page's current text + media back to the day's saved entry
+    /// WITHOUT re-polishing (inline edits from the preview, photo changes
+    /// from the day browser). No-op when the day has no entry yet.
+    private func persistPageEdits() {
+        let start = Calendar.current.startOfDay(for: selectedDate)
+        guard let end = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return }
+        let descriptor = FetchDescriptor<DayEntry>(
+            predicate: #Predicate { $0.date >= start && $0.date < end },
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        guard let entry = (try? modelContext.fetch(descriptor))?.first else { return }
+        entry.polishedText = polished
+        entry.mediaLocalIds = suggestedAssets.map(\.localIdentifier)
+        if let highlight = entry.highlightLocalId, !entry.mediaLocalIds.contains(highlight) {
+            entry.highlightLocalId = entry.mediaLocalIds.first
+        }
+        entry.updatedAt = Date()
+        do {
+            try modelContext.save()
+            savedMessage = "Saved to your journal"
+            Log.event("Save", "entry edited from preview for \(start.formatted(date: .abbreviated, time: .omitted)), media=\(entry.mediaLocalIds.count)")
+        } catch {
+            savedMessage = "Could not save edits: \(error.localizedDescription)"
+            Log.event("Save", "preview edit FAILED: \(error.localizedDescription)")
         }
     }
 
