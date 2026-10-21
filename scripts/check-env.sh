@@ -22,13 +22,15 @@ else
   fail=1
 fi
 
-if xcodebuild -showsdks 2>/dev/null | grep -q "iphoneos26"; then
-  say "iOS 26 SDK" "present"
+# Dayline needs iOS SDK 26 OR NEWER (a newer Xcode ships a newer SDK - fine).
+sdk_major=$(xcodebuild -showsdks 2>/dev/null | grep -oE 'iphoneos[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
+if [[ -n "$sdk_major" && "$sdk_major" -ge 26 ]]; then
+  say "iOS SDK" "$sdk_major (26+ required) - present"
 else
-  say "iOS 26 SDK" "MISSING (see Xcode note above)"; fail=1
+  say "iOS SDK" "MISSING or older than 26 (install Xcode 26+)"; fail=1
 fi
 
-if command -v xcodegen &>/dev/null; then say "XcodeGen" "$(xcodegen --version)"; else say "XcodeGen" "not installed (setup.sh installs it via Homebrew)"; fi
+if command -v xcodegen &>/dev/null; then say "XcodeGen" "$(xcodegen --version)"; else say "XcodeGen" "not installed (setup.sh installs it)"; fi
 if command -v git &>/dev/null; then say "git" "$(git --version | cut -d' ' -f3)"; else say "git" "missing"; fail=1; fi
 if command -v gh &>/dev/null; then say "GitHub CLI" "present (optional)"; else say "GitHub CLI" "not installed (optional, for repo creation)"; fi
 
