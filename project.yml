@@ -19,6 +19,7 @@ targets:
     settings:
       base:
         SWIFT_VERSION: "5.0"
+        PRODUCT_NAME: Dayline
         PRODUCT_BUNDLE_IDENTIFIER: com.steenjennings.dayline
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
@@ -38,6 +39,7 @@ targets:
     settings:
       base:
         SWIFT_VERSION: "5.0"
+        PRODUCT_NAME: DaylineTests
         PRODUCT_BUNDLE_IDENTIFIER: com.steenjennings.dayline.tests
     dependencies:
       - target: Dayline
