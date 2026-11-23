@@ -104,6 +104,32 @@ once — it refreshes the signing automatically over Wi-Fi. The moment you
 want TestFlight, widgets, or iCloud sync, that's what the $99 program buys;
 nothing in the app needs to change to upgrade.
 
+## 5b. The long-term loop (Steen's call, 2026-11-23)
+
+**Device builds are the primary loop; the sim is for quick checks.**
+The sim proved the plumbing, but it cannot validate the two things that
+matter most: speech transcription on real hardware (the sim has no
+speech models — the "not available for your language/region" error is a
+sim artifact) and photo ranking against a real library (the sim's
+library is synthetic). Apple Intelligence polish *does* run in the sim
+on Apple Silicon, so layout and polish can be iterated there fast —
+but a build is only proven once it runs on the phone.
+
+The steady state:
+- **Everyday use happens on the phone.** Journal there; that's the data
+  that feeds Discover later.
+- **New builds:** `git pull && ./scripts/setup.sh`, then Cmd+R with the
+  iPhone as destination (USB the first time, Wi-Fi after — "Connect via
+  network" in Devices and Simulators). Same rhythm as §5: re-sign
+  weekly and the app keeps working, data intact.
+- **Sim stays useful for:** fast UI/layout iteration and the CI
+  build+test suite (GitHub Actions can only ever build for the sim —
+  there is no device in CI). If a change is sim-green but phone-untested,
+  it is not done.
+- **Diagnostics are the feedback channel:** after any phone session,
+  Data tab → share `dayline-diagnostics.log` here; it's how real-world
+  speech, ranking, and photo-fetch behavior get tuned.
+
 ## 6. GitHub (optional, 3 minutes)
 ```bash
 gh repo create dayline --private --source . --push    # with GitHub CLI
