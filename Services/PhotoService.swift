@@ -42,8 +42,10 @@ struct PhotoKitThumbnails: ThumbnailProviding {
     }
 }
 
+// NSObject: PHPhotoLibraryChangeObserver inherits from NSObjectProtocol,
+// which a Swift class cannot conform to without inheriting NSObject.
 @MainActor
-class PhotoService: ObservableObject, PHPhotoLibraryChangeObserver {
+class PhotoService: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
     @Published var todaysAssets: [PHAsset] = []
     @Published var permissionStatus: PHAuthorizationStatus = .notDetermined
     /// The day `todaysAssets` currently covers (usually TodayView's
@@ -57,7 +59,8 @@ class PhotoService: ObservableObject, PHPhotoLibraryChangeObserver {
     var analyzer: any CandidateAnalyzer = VisionCandidateAnalyzer()
     var thumbnails: any ThumbnailProviding = PhotoKitThumbnails()
 
-    init() {
+    override init() {
+        super.init()
         PHPhotoLibrary.shared().register(self)
     }
 
