@@ -65,16 +65,20 @@ struct MonthCalendarView: View {
         return Button { selectedDate = start } label: {
             ZStack {
                 if isSelected {
+                    // Rust is reserved for selection (and the mic, and the
+                    // favorite mark) — the selected day is one of its three
+                    // jobs in the whole app.
                     Circle().fill(Theme.accent)
                 } else if isToday {
-                    Circle().stroke(Theme.accent, lineWidth: 1.5)
+                    Circle().stroke(Theme.ink, lineWidth: 1.5)
                 }
                 VStack(spacing: 1) {
                     Text("\(cal.component(.day, from: day))")
                         .font(.system(size: 13, weight: isToday ? .bold : .regular))
+                        .monospacedDigit()
                         .foregroundStyle(isSelected ? .white : Theme.ink)
                     Circle()
-                        .fill(isSelected ? .white : Theme.accent)
+                        .fill(isSelected ? .white : Theme.ink.opacity(0.55))
                         .frame(width: 4, height: 4)
                         .opacity(hasEntry ? 1 : 0)
                 }

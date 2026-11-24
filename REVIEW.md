@@ -91,3 +91,36 @@ Fixed:
 Noted, not fixed: LPMetadataProvider continuation can leak if its view is
 dismissed mid-fetch (harmless, one-shot); per-cell loop observers suit the
 current scrapbook sizes.
+
+## Pass 3 — taste (2026-11-23, branch `taste-pass`)
+
+Steen's critique: the design had become AI-slop homogeny — the same
+warm-beige/rust/serif look every AI-assisted app ships. The pass
+replaced decoration with a point of view (documented in DESIGN.md):
+field journal, not lifestyle blog. Rust is now reserved for exactly
+three jobs (mic, selected calendar day, favorite mark); surfaces are
+separated by hairlines, not shadows; tags are words under a small-caps
+label, never blue/purple pills; serif is dates/titles only.
+
+Gaps closed in the same pass:
+- **`isFavorite` was orphaned** (model field since the scaffold, no UI
+  anywhere). It now has a star toggle in EntryDetail (persisted) and a
+  rust star on Year cards.
+- **Keyboard covered Polish + Save** (BACKLOG item 9): interactive
+  keyboard dismissal plus a Done key above the keyboard.
+- **Year grid had no structure** (undifferentiated adaptive grid):
+  month-grouped sections with serif headers and day counts, via the
+  pure, unit-tested `YearGrouping.group` (YearGroupingTests).
+- **Trends was a default iOS `List`** — restyled into the design
+  language (scroll sections, hairline rows, tabular counts, inline
+  insight card); behavior unchanged.
+- **Scrapbook media badges** were black pill overlays; now plain
+  caption text. Link-preview fallback and placeholder rows lost their
+  blue/yellow system colors for ink/rust.
+- **DataView Form buttons** were system blue; now ink.
+
+Deliberately not changed: the app icon (rust sun over ink horizon),
+the peppered scrapbook layout, and the two-pool photo selection —
+those were already opinionated. Not fixed here: manual edits
+overwritten by re-recording, and long-dictation polish overflow —
+both remain accepted limits in BACKLOG.md.

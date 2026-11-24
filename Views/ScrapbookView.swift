@@ -18,7 +18,7 @@ struct ScrapbookView: View {
         let blocks = ScrapbookLayout.blocks(text: text,
                                             mediaIsVideo: assets.map { $0.mediaType == .video })
         return VStack(alignment: .leading, spacing: 12) {
-            Text(heading).font(Theme.display(17)).foregroundStyle(Theme.ink)
+            Theme.kicker(heading).foregroundStyle(.secondary)
             if blocks.isEmpty {
                 ScrapbookCard {
                     Text(text).font(.body)
@@ -28,7 +28,7 @@ struct ScrapbookView: View {
                 ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                     switch block {
                     case .text(let chunk):
-                        ScrapbookCard {
+                        ScrapbookCard(ruled: true) {
                             Text(chunk).font(.body)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -63,14 +63,23 @@ extension ScrapbookView {
     }
 }
 
+/// A scrapbook card: paper surface, hairline edge, no shadow.
+/// Text chunks carry a short rust tick at the top — the margin mark of
+/// a journal, and the only place rust appears inside a page.
 private struct ScrapbookCard<Content: View>: View {
+    var ruled: Bool = false
     @ViewBuilder var content: Content
     var body: some View {
-        content
-            .padding(12)
-            .background(Theme.card)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+        VStack(alignment: .leading, spacing: 8) {
+            if ruled {
+                Rectangle().fill(Theme.accent).frame(width: 28, height: 2)
+            }
+            content
+        }
+        .padding(12)
+        .background(Theme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline, lineWidth: 1))
     }
 }
 
@@ -95,20 +104,23 @@ struct AssetThumbnailView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(alignment: .bottomLeading) {
+            // Prints get a caption, not a pill badge: plain small-caps
+            // white text over the photo itself.
             HStack(spacing: 4) {
                 if asset.mediaType == .video {
-                    Image(systemName: "play.circle.fill")
-                    Text(formatDuration(asset.duration)).font(.caption2)
+                    Image(systemName: "play.fill")
+                    Text(formatDuration(asset.duration))
                 }
                 if asset.mediaSubtypes.contains(.photoLive) {
                     Image(systemName: "livephoto")
+                    Text("LIVE")
                 }
             }
-            .foregroundColor(.white)
-            .padding(4)
-            .background(.black.opacity(0.45))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .padding(4)
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.5)
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.7), radius: 2, x: 0, y: 1)
+            .padding(6)
             .opacity(asset.mediaType == .video || asset.mediaSubtypes.contains(.photoLive) ? 1 : 0)
         }
         .task(id: asset.localIdentifier) {
@@ -175,9 +187,10 @@ struct LinkPreviewRow: View {
     var url: String
     var body: some View {
         HStack {
-            RoundedRectangle(cornerRadius: 6).fill(.blue.opacity(0.1)).frame(width: 40, height: 40).overlay { Image(systemName: "link") }
+            RoundedRectangle(cornerRadius: 6).fill(Theme.ink.opacity(0.06)).frame(width: 40, height: 40)
+                .overlay { Image(systemName: "link").foregroundStyle(Theme.ink) }
             VStack(alignment: .leading) { Text("Link Preview").font(.caption.bold()); Text(url).font(.caption2).foregroundStyle(.secondary) }
-        }.padding().background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 10))
+        }.journalCard(padding: 10)
     }
 }
 
@@ -185,6 +198,11 @@ struct PlaceholderRow: View {
     var note: String
     var isResolved: Bool
     var body: some View {
-        Label(note, systemImage: isResolved ? "checkmark.circle.fill" : "exclamationmark.circle").font(.caption).padding().background(.yellow.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 10))
+        Label(note, systemImage: isResolved ? "checkmark.circle.fill" : "exclamationmark.circle")
+            .font(.caption)
+            .foregroundStyle(Theme.ink)
+            .padding()
+            .background(Theme.accent.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

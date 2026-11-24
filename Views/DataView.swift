@@ -66,6 +66,9 @@ struct DataView: View {
                 }
             }
             .scrollContentBackground(.hidden).background(Theme.paper)
+            // Form buttons default to system blue — ink keeps the utility
+            // tab inside the same design language as the rest of the app.
+            .tint(Theme.ink)
             .navigationTitle("Data")
         }
     }
