@@ -164,6 +164,12 @@ struct DataView: View {
 private struct DataSection<Content: View>: View {
     var title: String
     @ViewBuilder var content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Theme.kicker(title).foregroundStyle(.secondary)

@@ -28,16 +28,20 @@ enum DaylineMigrationPlan: SchemaMigrationPlan {
 /// recovery, and the last JSON export remains the restore path.
 enum JournalStore {
     static func makeContainer() -> ModelContainer {
+        // The versioned overload takes a Schema *value*, not the
+        // VersionedSchema metatype — `for: DaylineSchemaV1.self` does
+        // not compile (CI issue #6).
+        let schema = Schema(versionedSchema: DaylineSchemaV1.self)
         do {
-            return try ModelContainer(for: DaylineSchemaV1.self, migrationPlan: DaylineMigrationPlan.self)
+            return try ModelContainer(for: schema, migrationPlan: DaylineMigrationPlan.self)
         } catch {
             Log.event("App", "store failed to open (\(error.localizedDescription)) - moving aside and opening fresh")
             moveAsideCorruptStore()
             do {
-                return try ModelContainer(for: DaylineSchemaV1.self, migrationPlan: DaylineMigrationPlan.self)
+                return try ModelContainer(for: schema, migrationPlan: DaylineMigrationPlan.self)
             } catch {
                 Log.event("App", "fresh store also failed (\(error.localizedDescription)) - opening in-memory")
-                return try! ModelContainer(for: DaylineSchemaV1.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+                return try! ModelContainer(for: schema, configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
             }
         }
     }
