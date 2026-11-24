@@ -66,7 +66,11 @@ final class PhotoSelectionTests: XCTestCase {
             item("M", labels: ["hike"], matched: ["hike"], aesthetic: 0.0),
             item("Q", labels: [], matched: [], aesthetic: 0.5),
         ]
-        XCTAssertTrue(PhotoRanker.select(items: [], limit: 3).isEmpty)
+        // The empty literal needs an explicit element type: `select` is
+        // generic over the item type and `[]` alone cannot infer it
+        // (CI issue #7).
+        let empty: [(item: String, features: PhotoFeatures, scored: ScoredPhotoFeatures)] = []
+        XCTAssertTrue(PhotoRanker.select(items: empty, limit: 3).isEmpty)
         XCTAssertTrue(PhotoRanker.select(items: items, limit: 0).isEmpty)
         // Limit larger than the pool returns everything, matched first.
         XCTAssertEqual(PhotoRanker.select(items: items, limit: 10), ["M", "Q"])
