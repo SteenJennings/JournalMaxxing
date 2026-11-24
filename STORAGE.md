@@ -4,10 +4,11 @@
 
 | Thing | Where | Details |
 |---|---|---|
-| Journal entries (text, tags, mood, links, photo IDs) | **On the phone, in the app's sandbox** | SwiftData store (SQLite under the hood), created by `.modelContainer(for: [DayEntry.self])` in `DaylineApp.swift`. No server copy exists. |
+| Journal entries (text, tags, mood, links, photo IDs) | **On the phone, in the app's sandbox** | SwiftData store (SQLite under the hood), versioned schema v1 (`DaylineSchemaV1`, migration plan in `Models/DaylineSchema.swift`), opened by `JournalStore.makeContainer()` in `DaylineApp.swift`. No server copy exists. |
 | Photos & videos | **Your Photos library** — never copied into the app | Entries store only each asset's `localIdentifier`. Rendering resolves it through PhotoKit at display time. |
 | Audio | Not stored | Transcription is live; when you stop, the audio is gone and only text remains. (Saving audio for re-transcription is a possible future setting.) |
-| Runtime logs | **Apple's unified log on the device** | `Logger` with subsystem `com.steenjennings.dayline`. Visible live in Xcode's console during a run from the Mac, or in Console.app. The OS retains/rotates them; the app does not keep its own log file. |
+| Runtime logs | **On-device, in Application Support** | `DiagnosticsLog` keeps a 500-line ring buffer (`dayline-diagnostics.log`), mirrored to Apple's unified log (`Logger`, subsystem `com.steenjennings.dayline`). Shareable from the Data tab; survives relaunches. |
+| In-progress drafts | **On-device, in Application Support** | `DraftStore` (`dayline-drafts.json`): one draft per day, written as you type/dictate, cleared when the day is saved. |
 | Build/test logs | **GitHub Actions** | Every push stores the full build + test log on the run page. |
 
 ## Is there a third-party database? Should there be a Supabase?
@@ -47,10 +48,14 @@ the camera roll, not a second copy of it.
 **Journal text:** entries are local-only today. There are three paths, in
 the order I'd take them:
 
-1. **Export (built, Data tab)** — JSON + readable Markdown export via the
-   share sheet; save to iCloud Drive/Files. Manual, zero infrastructure,
-   works under free provisioning. This is the backup story for now, and it
-   means deleting the app is recoverable *if* you export.
+1. **Export + import (built, Data tab)** — JSON + readable Markdown
+   export via the share sheet; save to iCloud Drive/Files. Manual, zero
+   infrastructure, works under free provisioning. The JSON export is a
+   complete snapshot (entry id, placeholders, created/updated dates,
+   schema version) and the Data tab can import it back, matching on id
+   then day. This is the backup story for now: deleting the app is
+   recoverable *if* you export, and the restore path exists — the old
+   doc overstated recoverability by describing an export-only backup.
 2. **SwiftData + CloudKit (the real sync answer, later)** — SwiftData can
    mirror the same store into your private CloudKit database with a
    configuration change, no new backend and no third party: your entries

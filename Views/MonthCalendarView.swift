@@ -11,7 +11,14 @@ struct MonthCalendarView: View {
 
     private let cal = Calendar.current
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
-    private let weekdaySymbols = ["S", "M", "T", "W", "T", "F", "S"]
+    /// Weekday initials in the device's locale order (the old code
+    /// hardcoded Sunday-first "SMTWTFS" and a Sunday-first lead offset).
+    private var weekdaySymbols: [String] {
+        let symbols = cal.shortWeekdaySymbols
+        let first = cal.firstWeekday - 1
+        let ordered = Array(symbols[first...] + symbols[..<first])
+        return ordered.map { String($0.prefix(1)) }
+    }
 
     static func firstOfMonth(_ date: Date) -> Date {
         let c = Calendar.current.dateComponents([.year, .month], from: date)
@@ -21,7 +28,7 @@ struct MonthCalendarView: View {
     private var cells: [Date?] {
         let first = MonthCalendarView.firstOfMonth(monthAnchor)
         guard let range = cal.range(of: .day, in: .month, for: first) else { return [] }
-        let lead = (cal.component(.weekday, from: first) - 1 + 7) % 7 // Sunday-first grid
+        let lead = (cal.component(.weekday, from: first) - cal.firstWeekday + 7) % 7
         var out: [Date?] = Array(repeating: nil, count: lead)
         for d in range {
             out.append(cal.date(byAdding: .day, value: d - 1, to: first))
@@ -36,7 +43,9 @@ struct MonthCalendarView: View {
                     .font(Theme.display(15)).foregroundStyle(Theme.ink)
                 Spacer()
                 Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
+                    .accessibilityLabel("Previous month")
                 Button { shiftMonth(1) } label: { Image(systemName: "chevron.right") }
+                    .accessibilityLabel("Next month")
             }
             .buttonStyle(.plain).foregroundStyle(Theme.ink)
 
@@ -55,6 +64,15 @@ struct MonthCalendarView: View {
             }
         }
         .journalCard(padding: 10)
+        .onChange(of: selectedDate) { _, newDay in
+            // The displayed month used to stay wherever the chevrons
+            // left it, even when the selection moved elsewhere (e.g.
+            // "Back to today" while browsing last month). Follow it.
+            let month = MonthCalendarView.firstOfMonth(newDay)
+            if month != MonthCalendarView.firstOfMonth(monthAnchor) {
+                monthAnchor = month
+            }
+        }
     }
 
     private func dayCell(_ day: Date) -> some View {
@@ -65,10 +83,10 @@ struct MonthCalendarView: View {
         return Button { selectedDate = start } label: {
             ZStack {
                 if isSelected {
-                    // Rust is reserved for selection (and the mic, and the
-                    // favorite mark) — the selected day is one of its three
-                    // jobs in the whole app.
-                    Circle().fill(Theme.accent)
+                    // Rust marks the selected day — one of its named jobs
+                    // (DESIGN.md rule 1). The darker text-safe value,
+                    // so the white number on it reads at 11pt.
+                    Circle().fill(Theme.accentText)
                 } else if isToday {
                     Circle().stroke(Theme.ink, lineWidth: 1.5)
                 }
@@ -86,6 +104,7 @@ struct MonthCalendarView: View {
             .frame(height: 34)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(day.formatted(date: .abbreviated, time: .omitted))\(isToday ? ", today" : "")\(isSelected ? ", selected" : "")\(hasEntry ? ", has entry" : "")")
     }
 
     private func shiftMonth(_ delta: Int) {

@@ -39,6 +39,34 @@ final class ScrapbookLayoutTests: XCTestCase {
         XCTAssertEqual(alignments, [true, false, true])
     }
 
+    func testTrailingMediaDistributesInsteadOfDumping() {
+        // One chunk + three media: the surplus used to pile up after
+        // the last chunk. Now it distributes between chunks — with one
+        // chunk, all three follow it, in order, videos full width.
+        let blocks = ScrapbookLayout.blocks(text: "One para.", mediaIsVideo: [false, false, true])
+        XCTAssertEqual(kinds(blocks), ["t", "m", "m", "m"])
+        guard case .media(_, let fullWidth, _) = blocks[3] else { return XCTFail("expected media") }
+        XCTAssertTrue(fullWidth, "the video block goes full width")
+        let alignments: [Bool] = blocks.compactMap { block in
+            if case .media(_, _, let right) = block { return right }
+            return nil
+        }
+        // The video does not tuck (full width), so its alignment is
+        // false; the two photos alternate right, left.
+        XCTAssertEqual(alignments, [true, false, false])
+    }
+
+    func testLongTwoSentenceParagraphSplits() {
+        // A >240-char paragraph with only two sentences used to stay
+        // one chunk and never pepper. Now it splits at word boundaries.
+        let part = String(repeating: "the light was unreal over the bay ", count: 8)
+        let text = part + ". " + part + "."
+        XCTAssertGreaterThan(text.count, 240)
+        let chunks = ScrapbookLayout.textChunks(text)
+        XCTAssertGreaterThan(chunks.count, 1, "long two-sentence paragraph should split")
+        XCTAssertTrue(chunks.allSatisfy { $0.count <= 260 }, "chunks stay near the ~240-char target")
+    }
+
     func testLongSingleParagraphSplitsForPeppering() {
         let sentence = "We walked down to the water and the light was doing something unreal over the bay"
         let text = (0..<6).map { _ in sentence }.joined(separator: ". ") + "."

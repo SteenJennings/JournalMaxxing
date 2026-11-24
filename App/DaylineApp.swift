@@ -5,6 +5,15 @@ import UIKit
 
 @main
 struct DaylineApp: App {
+    // The container is built explicitly (not via the modifier) so a
+    // store that fails to open gets the move-aside-and-retry fallback in
+    // JournalStore instead of crashing the launch.
+    private let container: ModelContainer = {
+        let c = JournalStore.makeContainer()
+        JournalMaintenance.dedupeDuplicates(in: c.mainContext)
+        return c
+    }()
+
     init() {
         Log.event("App", "launched on iOS \(UIDevice.current.systemVersion)")
     }
@@ -13,7 +22,7 @@ struct DaylineApp: App {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(for: [DayEntry.self])
+        .modelContainer(container)
     }
 }
 

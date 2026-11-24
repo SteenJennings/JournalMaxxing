@@ -2,6 +2,8 @@ import Foundation
 import Speech
 import AVFoundation
 
+enum SpeechDownloadError: Error { case timeout }
+
 /// On-device live transcription.
 ///
 /// Engine: SpeechAnalyzer + SpeechTranscriber (iOS 26 Speech framework).
@@ -18,6 +20,8 @@ final class SpeechTranscriberService: ObservableObject {
     @Published var transcript: String = ""
     @Published var isRecording: Bool = false
     @Published var errorMessage: String?
+    /// Shown while starting (e.g. while the speech model downloads).
+    @Published var statusMessage: String?
 
     private var analyzer: SpeechAnalyzer?
     private var transcriber: SpeechTranscriber?
@@ -33,11 +37,66 @@ final class SpeechTranscriberService: ObservableObject {
     /// AVAudioEngine) or start a competing analyzer.
     @Published private(set) var isStarting = false
     private var startGeneration = 0
+    private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
+
+    init() {
+        // A phone call or Siri used to kill the recording with no
+        // message and leave the UI stuck on "Listening". Stop cleanly
+        // and say why.
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            Task { @MainActor [weak self] in
+                guard let self, self.isRecording else { return }
+                guard let info = note.userInfo,
+                      let typeRaw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                      let type = AVAudioSession.InterruptionType(rawValue: typeRaw),
+                      type == .began else { return }
+                self.errorMessage = "Recording paused — interrupted (call or Siri). Tap the mic to resume."
+                Log.event("Speech", "interruption began - stopped recording")
+                self.stop()
+            }
+        }
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            Task { @MainActor [weak self] in
+                guard let self, self.isRecording else { return }
+                guard let info = note.userInfo,
+                      let reasonRaw = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                      let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw),
+                      reason == .oldDeviceUnavailable else { return }
+                self.errorMessage = "Recording paused — the microphone was disconnected. Tap the mic to resume."
+                Log.event("Speech", "audio route lost (old device unavailable) - stopped recording")
+                self.stop()
+            }
+        }
+    }
+
+    deinit {
+        if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
+        if let routeChangeObserver { NotificationCenter.default.removeObserver(routeChangeObserver) }
+    }
+
+    /// One-line, human-readable availability for the Data tab — the old
+    /// row was a hardcoded string, so the tab claimed transcription was
+    /// ready even when the locale check would fail.
+    static func availabilitySummary() async -> String {
+        guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
+            return "Speech recognition permission not granted"
+        }
+        guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
+            return "Not available for \(Locale.current.identifier)"
+        }
+        return "Available (\(locale.identifier), on-device)"
+    }
 
     /// Clear the error banner and any captured text (day rollover, day
     /// switch, manual dismiss). Does not touch a live recording.
     func clearAll() {
         errorMessage = nil
+        statusMessage = nil
         guard !isRecording else { return }
         transcript = ""
         finalText = ""
@@ -59,6 +118,7 @@ final class SpeechTranscriberService: ObservableObject {
         volatileText = ""
         transcript = ""
         errorMessage = nil
+        statusMessage = nil
         // Permissions: speech recognition + microphone.
         let speechOK = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
             SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0 == .authorized) }
@@ -82,11 +142,30 @@ final class SpeechTranscriberService: ObservableObject {
             transcriber = module
 
             // The transcription model is a system asset; download it if the
-            // device does not have it yet (one-time, system-managed).
+            // device does not have it yet (one-time, system-managed). The
+            // old code awaited this forever with no message and no
+            // timeout — a stalled download looked like a dead mic.
             if let installRequest = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
                 Log.event("Speech", "transcription model asset not present - downloading")
-                try await installRequest.downloadAndInstall()
-                Log.event("Speech", "transcription model asset installed")
+                statusMessage = "Downloading speech model…"
+                do {
+                    try await withThrowingTaskGroup(of: Void.self) { group in
+                        group.addTask { try await installRequest.downloadAndInstall() }
+                        group.addTask {
+                            try await Task.sleep(for: .seconds(60))
+                            throw SpeechDownloadError.timeout
+                        }
+                        try await group.next()
+                        group.cancelAll()
+                    }
+                    Log.event("Speech", "transcription model asset installed")
+                } catch {
+                    statusMessage = nil
+                    errorMessage = "The speech model download timed out. Check your connection and try again."
+                    Log.event("Speech", "model download failed/timed out: \(error.localizedDescription)")
+                    return
+                }
+                statusMessage = nil
             }
 
             let session = SpeechAnalyzer(modules: [module])
@@ -104,7 +183,9 @@ final class SpeechTranscriberService: ObservableObject {
             inputContinuation = continuation
             try await session.start(inputSequence: stream)
 
-            // Live results.
+            // Live results. If the stream dies while recording, the old
+            // code only set the banner and left the engine running with
+            // a frozen "Listening" state — stop cleanly instead.
             resultsTask = Task { [weak self] in
                 do {
                     for try await result in module.results {
@@ -120,8 +201,19 @@ final class SpeechTranscriberService: ObservableObject {
                             self.transcript = self.finalText + self.volatileText
                         }
                     }
+                    await MainActor.run { [weak self] in
+                        guard let self, self.isRecording else { return }
+                        self.errorMessage = "Transcription stopped unexpectedly."
+                        Log.event("Speech", "results stream ended while recording - stopped")
+                        self.stop()
+                    }
                 } catch {
-                    await MainActor.run { self?.errorMessage = "Transcription stopped unexpectedly."; Log.event("Speech", "results stream error: \(error.localizedDescription)") }
+                    await MainActor.run { [weak self] in
+                        guard let self else { return }
+                        self.errorMessage = "Transcription stopped unexpectedly."
+                        Log.event("Speech", "results stream error: \(error.localizedDescription)")
+                        if self.isRecording { self.stop() }
+                    }
                 }
             }
 
@@ -151,20 +243,35 @@ final class SpeechTranscriberService: ObservableObject {
     func stop() {
         startGeneration += 1
         isStarting = false
+        statusMessage = nil
         if audioEngine.isRunning {
             audioEngine.stop()
             audioEngine.inputNode.removeTap(onBus: 0)
         }
+        // Finish the input FIRST, then finalize the analyzer and let the
+        // results task drain the remaining finals. The old code cancelled
+        // the results task before finalizing, so the finalize call ran
+        // after the consumer was gone and the last phrase was lost.
         inputContinuation?.finish()
         inputContinuation = nil
-        resultsTask?.cancel()
-        resultsTask = nil
         let session = analyzer
         analyzer = nil
         transcriber = nil
         Log.event("Speech", "stopped (final transcript \(transcript.count) chars)")
         if let session {
-            Task { try? await session.finalizeAndFinishThroughEndOfInput() }
+            Task {
+                try? await session.finalizeAndFinishThroughEndOfInput()
+                // The results task ends on its own when the stream closes;
+                // the watchdog only cancels one that is stuck.
+                try? await Task.sleep(for: .seconds(2))
+                self.resultsTask?.cancel()
+                self.resultsTask = nil
+                // Whatever drained in the meantime is the final text.
+                self.transcript = self.finalText + self.volatileText
+            }
+        } else {
+            resultsTask?.cancel()
+            resultsTask = nil
         }
         isRecording = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)

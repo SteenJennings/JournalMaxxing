@@ -8,8 +8,11 @@ actor VisionService {
         guard let cg = image.cgImage else { return [] }
         return await withCheckedContinuation { cont in
             let req = VNClassifyImageRequest { req, _ in
+                // 0.05 admitted near-noise labels ("building" at 0.06
+                // tagged everything); 0.2 keeps only labels Vision
+                // actually believes.
                 let results = (req.results as? [VNClassificationObservation])?
-                    .filter { $0.confidence > 0.05 }
+                    .filter { $0.confidence > 0.2 }
                     .prefix(8).map { $0.identifier } ?? []
                 cont.resume(returning: results)
             }
@@ -52,11 +55,17 @@ actor VisionService {
         async let aes = aesthetics(for: image)
         async let faces = faceCount(for: image)
         let a = await aes
-        return PhotoFeatures(labels: await labels,
-                             aestheticScore: a?.score,
-                             isUtility: a?.isUtility ?? false,
-                             faceCount: await faces,
-                             isFavorite: isFavorite,
-                             isVideo: isVideo)
+        let f = PhotoFeatures(labels: await labels,
+                              aestheticScore: a?.score,
+                              isUtility: a?.isUtility ?? false,
+                              faceCount: await faces,
+                              isFavorite: isFavorite,
+                              isVideo: isVideo)
+        // All three Vision passes failing at once used to be silent — a
+        // photo ranked on nothing. One log line makes it visible.
+        if f.labels.isEmpty && f.aestheticScore == nil && f.faceCount == 0 {
+            Log.event("Vision", "all three feature passes failed for a thumbnail (labels, aesthetics, faces empty)")
+        }
+        return f
     }
 }

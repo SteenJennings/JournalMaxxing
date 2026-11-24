@@ -8,12 +8,19 @@ import UIKit
 /// pill tags), which is exactly the generic AI-app look. The rules that
 /// keep this from sliding back:
 ///
-/// 1. **One accent, used sparingly.** Rust is the mic (the one action),
-///    the selected calendar day, and the favorite mark. Everything else
-///    is ink on paper. If rust shows up in a third place, it is a bug.
+/// 1. **One accent, used sparingly.** Rust marks the thing that
+///    matters on the page: the mic (the one action), the selected
+///    calendar day, the favorite mark, the mood word, the section
+///    kicker, the scrapbook margin tick. Everything else is ink on
+///    paper. Rust never does two jobs in one view, and never decorates
+///    chrome (tab bar, buttons, navigation). The shipped code used to
+///    claim "exactly three jobs" while using rust in six places — the
+///    rule now names the real system instead of pretending.
 /// 2. **Hairlines, not shadows.** Surfaces are separated by a 1px ink
 ///    hairline, never a drop shadow — except the mic, the one element
-///    allowed to float.
+///    allowed to float, and the small dark shadow that keeps white
+///    caption text legible over photos (text-over-photo is the one
+///    exception, and it is for legibility, not depth).
 /// 3. **Tags are words, not pills.** Tags and mood are set as plain
 ///    lowercase text, separated by middots, under a small-caps label.
 ///    No blue, no purple, no capsules anywhere in the app.
@@ -39,6 +46,10 @@ enum Theme {
     })
     /// The one accent. See rule 1 above.
     static let accent = Color(red: 0.79, green: 0.44, blue: 0.29) // rust
+    /// The same rust, darkened for small text. Bright rust on paper is
+    /// ~3.3:1 — fine for a big icon, failing for 11pt text. Kickers, the
+    /// mood word, and the selected-day disc use this.
+    static let accentText = Color(red: 0.60, green: 0.28, blue: 0.15)
     /// The only separator color in the app.
     static let hairline = Color(uiColor: UIColor { t in
         t.userInterfaceStyle == .dark
@@ -95,7 +106,7 @@ struct TagLine: View {
             Theme.kicker("Tags").foregroundStyle(.secondary)
             HStack(spacing: 6) {
                 if let mood, !mood.isEmpty {
-                    Text(mood).font(Theme.display(13)).italic().foregroundStyle(Theme.accent)
+                    Text(mood).font(Theme.display(13)).italic().foregroundStyle(Theme.accentText)
                 }
                 if !tags.isEmpty {
                     Text(tags.joined(separator: " · "))

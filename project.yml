@@ -1,6 +1,8 @@
 name: Dayline
 options:
   bundleIdPrefix: com.steenjennings
+  # Advisory, not a pin: Steen's Mac runs Xcode 27 and setup.sh works
+  # there. CI pins the toolchain explicitly in build.yml instead.
   xcodeVersion: "26.0"
   deploymentTarget:
     iOS: "26.0"

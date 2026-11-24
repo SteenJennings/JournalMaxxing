@@ -1,11 +1,84 @@
 import Photos
 import Foundation
+import UIKit
+
+/// One candidate for ranking. Carries the PHAsset for production use,
+/// but tests can build candidates with `asset: nil` and inject a fake
+/// analyzer — the old code was untestable because it reached straight
+/// into PhotoKit and a private concrete VisionService.
+struct RankCandidate {
+    var localIdentifier: String
+    var isFavorite: Bool
+    var isVideo: Bool
+    var asset: PHAsset?
+}
+
+/// The Vision step, behind a protocol so tests can inject canned
+/// features. Production implementation is `VisionCandidateAnalyzer`.
+protocol CandidateAnalyzer {
+    func analyze(_ candidate: RankCandidate, image: UIImage?, transcript: String) async -> ScoredPhotoFeatures?
+}
+
+struct VisionCandidateAnalyzer: CandidateAnalyzer {
+    private let vision = VisionService()
+    func analyze(_ candidate: RankCandidate, image: UIImage?, transcript: String) async -> ScoredPhotoFeatures? {
+        guard let image else { return nil }
+        let features = await vision.features(for: image,
+                                             isFavorite: candidate.isFavorite,
+                                             isVideo: candidate.isVideo)
+        return PhotoRanker.score(features: features, transcript: transcript)
+    }
+}
+
+/// The thumbnail step, behind a protocol for the same reason.
+protocol ThumbnailProviding {
+    func thumbnail(for candidate: RankCandidate) async -> UIImage?
+}
+
+struct PhotoKitThumbnails: ThumbnailProviding {
+    func thumbnail(for candidate: RankCandidate) async -> UIImage? {
+        guard let asset = candidate.asset else { return nil }
+        return await AssetMediaLoader.image(for: asset, targetSize: CGSize(width: 260, height: 260))
+    }
+}
 
 @MainActor
-class PhotoService: ObservableObject {
+class PhotoService: ObservableObject, PHPhotoLibraryChangeObserver {
     @Published var todaysAssets: [PHAsset] = []
     @Published var permissionStatus: PHAuthorizationStatus = .notDetermined
-    private let vision = VisionService()
+    /// The day `todaysAssets` currently covers (usually TodayView's
+    /// selectedDate); the library observer re-fetches this day.
+    private var currentDay: Date = Date()
+    private var changeGeneration = 0
+    /// In-memory feature cache: Vision runs once per asset per launch,
+    /// not once per polish (the old code re-analyzed every photo on every
+    /// Polish + Save). Keyed by localIdentifier.
+    private var featureCache: [String: PhotoFeatures] = [:]
+    var analyzer: any CandidateAnalyzer = VisionCandidateAnalyzer()
+    var thumbnails: any ThumbnailProviding = PhotoKitThumbnails()
+
+    init() {
+        PHPhotoLibrary.shared().register(self)
+    }
+
+    deinit {
+        PHPhotoLibrary.shared().unregisterChangeObserver(self)
+    }
+
+    /// The library changed while the app was open (photos added, an album
+    /// edited, limited-access picks changed): re-fetch the working day so
+    /// the pool never goes stale. Debounced — the callback fires in bursts.
+    nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.changeGeneration += 1
+            let generation = self.changeGeneration
+            try? await Task.sleep(for: .milliseconds(500))
+            guard generation == self.changeGeneration else { return }
+            Log.event("Photos", "library changed - re-fetching \(self.currentDay.formatted(date: .abbreviated, time: .omitted))")
+            self.fetchAssets(on: self.currentDay)
+        }
+    }
 
     func requestPermissionAndFetch() {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] status in
@@ -25,6 +98,7 @@ class PhotoService: ObservableObject {
     /// Date is the primary filter for suggestions: the transcript is about a
     /// day, so the candidate pool is that day's library.
     func fetchAssets(on date: Date) {
+        currentDay = date
         let cal = Calendar.current
         let start = cal.startOfDay(for: date)
         guard let end = cal.date(byAdding: .day, value: 1, to: start) else { return }
@@ -67,30 +141,90 @@ class PhotoService: ObservableObject {
         Array(todaysAssets.prefix(5))
     }
 
+    /// The ranking candidate pool: at most `cap` candidates, stride-
+    /// sampled across the day so a 300-photo day isn't represented by
+    /// its last 24 (the old code took `prefix(24)` of a newest-first
+    /// list). Videos are always included — they carry the day's motion.
+    static func sampledCandidates(from candidates: [RankCandidate], cap: Int = 24) -> [RankCandidate] {
+        guard candidates.count > cap else { return candidates }
+        let videos = candidates.filter(\.isVideo)
+        let step = Double(candidates.count) / Double(cap)
+        var picked: [RankCandidate] = []
+        var seen: Set<String> = []
+        for i in 0..<cap {
+            let c = candidates[min(Int(Double(i) * step), candidates.count - 1)]
+            if seen.insert(c.localIdentifier).inserted { picked.append(c) }
+        }
+        for v in videos where seen.insert(v.localIdentifier).inserted { picked.append(v) }
+        return picked
+    }
+
     /// Ranked suggestions: thumbnail each candidate (capped, for battery),
     /// extract Vision features, score against the transcript with PhotoRanker.
-    /// Analysis results are computed fresh per call in v1; caching extracted
-    /// features per localIdentifier is the known next optimisation.
+    /// Analyzes in parallel (4 at a time) with an in-memory feature cache,
+    /// and respects task cancellation.
     func rankedSuggest(for transcript: String, limit: Int = 5) async -> [PHAsset] {
-        let candidates = Array(todaysAssets.prefix(24))
+        let all = todaysAssets.map {
+            RankCandidate(localIdentifier: $0.localIdentifier,
+                          isFavorite: $0.isFavorite,
+                          isVideo: $0.mediaType == .video,
+                          asset: $0)
+        }
+        let candidates = Self.sampledCandidates(from: all)
         Log.event("Photos", "rankedSuggest: \(candidates.count) candidates from \(todaysAssets.count) assets")
         guard !candidates.isEmpty else { Log.event("Photos", "rankedSuggest: NO candidates (empty day or no permission)"); return [] }
-        var items: [(item: PHAsset, features: PhotoFeatures, scored: ScoredPhotoFeatures)] = []
-        for asset in candidates {
-            guard let thumb = await AssetMediaLoader.image(
-                for: asset, targetSize: CGSize(width: 260, height: 260)) else { continue }
-            let features = await vision.features(for: thumb,
-                                                 isFavorite: asset.isFavorite,
-                                                 isVideo: asset.mediaType == .video)
-            let result = PhotoRanker.score(features: features, transcript: transcript)
-            items.append((asset, features, result))
+        let picked = await rankedSuggest(candidates: candidates, transcript: transcript, limit: limit)
+        if picked.isEmpty { Log.event("Photos", "rankedSuggest: 0 scored, using prefix fallback"); return suggest(for: transcript) }
+        Log.event("Photos", "rankedSuggest: two-pool picked \(picked.count) of \(candidates.count) candidates")
+        return picked.compactMap(\.asset)
+    }
+
+    /// The testable core: scores candidates and returns the picked ones.
+    /// Cache hits are scored synchronously; the rest analyze in parallel.
+    func rankedSuggest(candidates: [RankCandidate], transcript: String, limit: Int = 5) async -> [RankCandidate] {
+        guard !candidates.isEmpty, limit > 0 else { return [] }
+        let analyzer = self.analyzer
+        let thumbnails = self.thumbnails
+        let cached = featureCache
+        var items: [(candidate: RankCandidate, scored: ScoredPhotoFeatures)] = []
+        var toAnalyze: [RankCandidate] = []
+        for c in candidates {
+            if let f = cached[c.localIdentifier] {
+                items.append((c, PhotoRanker.score(features: f, transcript: transcript)))
+            } else {
+                toAnalyze.append(c)
+            }
         }
-        if items.isEmpty { Log.event("Photos", "rankedSuggest: 0 scored, using prefix fallback"); return suggest(for: transcript) }
-        // Two-pool selection: most slots to text matches, the rest to the
-        // day's best photos whether the text mentioned them or not.
-        let picked = PhotoRanker.select(items: items, limit: limit)
-        let matchedAvailable = items.filter { !$0.scored.matchedLabels.isEmpty }.count
-        Log.event("Photos", "rankedSuggest: two-pool picked \(picked.count) of \(items.count) scored (text-matched available: \(matchedAvailable))")
-        return picked
+        // Parallel in chunks of 4: Vision + thumbnail fetches are the
+        // slow part, and unbounded concurrency spikes memory on big days.
+        for chunk in toAnalyze.chunked(into: 4) {
+            guard !Task.isCancelled else { break }
+            let analyzed: [(RankCandidate, ScoredPhotoFeatures)] = await withTaskGroup(of: (RankCandidate, ScoredPhotoFeatures)?.self) { group in
+                for c in chunk {
+                    group.addTask {
+                        guard !Task.isCancelled else { return nil }
+                        let image = await thumbnails.thumbnail(for: c)
+                        guard let scored = await analyzer.analyze(c, image: image, transcript: transcript) else { return nil }
+                        return (c, scored)
+                    }
+                }
+                var out: [(RankCandidate, ScoredPhotoFeatures)] = []
+                for await r in group { if let r { out.append(r) } }
+                return out
+            }
+            for (c, scored) in analyzed {
+                featureCache[c.localIdentifier] = scored.features
+                items.append((c, scored))
+            }
+        }
+        guard !items.isEmpty else { return [] }
+        return PhotoRanker.select(items: items.map { (item: $0.candidate, features: $0.scored.features, scored: $0.scored) }, limit: limit)
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map { Array(self[$0..<Swift.min($0 + size, count)]) }
     }
 }

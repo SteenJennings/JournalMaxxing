@@ -21,7 +21,12 @@ final class DiagnosticsLog: ObservableObject {
     private let lock = NSLock()
     private let storageURL: URL?
     private let maxLines = 500
+    /// Lines trimmed off the front of the ring buffer, so far. The log
+    /// used to drop old lines silently — after a week of use there was
+    /// no way to tell history was missing.
+    private var droppedCount = 0
     private static let osLog = Logger(subsystem: "com.steenjennings.dayline", category: "Diagnostics")
+    private static let timestampFormatter = ISO8601DateFormatter()
 
     init(storageURL: URL? = DiagnosticsLog.defaultFileURL()) {
         self.storageURL = storageURL
@@ -40,13 +45,22 @@ final class DiagnosticsLog: ObservableObject {
     }
 
     func log(_ category: String, _ message: String) {
-        let line = "\(ISO8601DateFormatter().string(from: Date())) [\(category)] \(message)"
-        Self.osLog.info("\(line, privacy: .public)")
         lock.lock()
+        // The formatter is shared and not thread-safe; format inside
+        // the lock that already guards storage.
+        let line = "\(Self.timestampFormatter.string(from: Date())) [\(category)] \(message)"
         storage.append(line)
-        if storage.count > maxLines { storage.removeFirst(storage.count - maxLines) }
+        if storage.count > maxLines {
+            let dropped = storage.count - maxLines
+            storage.removeFirst(dropped)
+            droppedCount += dropped
+            // The marker consumes the oldest surviving line's slot, so
+            // the 500-line cap still holds exactly.
+            storage[0] = "… \(droppedCount) earlier line\(droppedCount == 1 ? "" : "s") dropped …"
+        }
         let snapshot = storage
         lock.unlock()
+        Self.osLog.info("\(line, privacy: .public)")
         persist(snapshot)
         DispatchQueue.main.async { [weak self] in self?.lines = snapshot }
     }
@@ -60,6 +74,7 @@ final class DiagnosticsLog: ObservableObject {
     func clear() {
         lock.lock()
         storage = []
+        droppedCount = 0
         lock.unlock()
         if let storageURL { try? FileManager.default.removeItem(at: storageURL) }
         DispatchQueue.main.async { [weak self] in self?.lines = [] }

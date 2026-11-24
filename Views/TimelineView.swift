@@ -85,6 +85,9 @@ struct YearCard: View {
                 .foregroundStyle(Theme.ink)
             Text(entry.polishedText.isEmpty ? entry.rawTranscript : entry.polishedText)
                 .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+            if let mood = entry.mood, !mood.isEmpty {
+                Text(mood).font(Theme.display(11)).italic().foregroundStyle(Theme.accentText).lineLimit(1)
+            }
             if !entry.projectTags.isEmpty {
                 Text(entry.projectTags.joined(separator: " · "))
                     .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
@@ -124,13 +127,14 @@ struct TrendsView: View {
     @StateObject var summarizer = Summarizer()
     @State var summary = ""
     @State var selectedTag: String?
+    @State var isLoadingSummary = false
     var tags: [String] { Summarizer.allTags(in: Array(entries)) }
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Theme.kicker("Trends").foregroundStyle(Theme.accent)
+                        Theme.kicker("Trends").foregroundStyle(Theme.accentText)
                         Text("\(entries.count) days · \(tags.count) tags")
                             .font(.caption).monospacedDigit().foregroundStyle(.secondary)
                         Hairline().padding(.top, 4)
@@ -142,11 +146,26 @@ struct TrendsView: View {
                         VStack(spacing: 0) {
                             ForEach(tags, id: \.self) { tag in
                                 Button {
+                                    // The old code showed the previous
+                                    // tag's insight until the new one
+                                    // loaded — and nothing at all while
+                                    // it did. Clear first, show a
+                                    // spinner, then the new insight.
                                     selectedTag = tag
-                                    Task { summary = await summarizer.trendSummary(entries: Array(entries), tag: tag) }
+                                    summary = ""
+                                    isLoadingSummary = true
+                                    Task {
+                                        summary = await summarizer.trendSummary(entries: Array(entries), tag: tag)
+                                        isLoadingSummary = false
+                                    }
                                 } label: {
                                     HStack {
-                                        Text(tag).foregroundStyle(Theme.ink)
+                                        if selectedTag == tag {
+                                            Circle().fill(Theme.accent).frame(width: 6, height: 6)
+                                        }
+                                        Text(tag)
+                                            .fontWeight(selectedTag == tag ? .semibold : .regular)
+                                            .foregroundStyle(Theme.ink)
                                         Spacer()
                                         Text("\(entries.filter { $0.projectTags.contains(tag) }.count) days")
                                             .font(.caption).monospacedDigit().foregroundStyle(.secondary)
@@ -158,7 +177,14 @@ struct TrendsView: View {
                             }
                         }
                     }
-                    if !summary.isEmpty {
+                    if isLoadingSummary {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("Reading your \(selectedTag ?? "") days…").font(.caption).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .journalCard()
+                    } else if !summary.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Theme.kicker("Insight — \(selectedTag ?? "")").foregroundStyle(.secondary)
                             Text(summary).font(.body)
@@ -186,7 +212,7 @@ struct EntryDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Theme.kicker("Dayline").foregroundStyle(Theme.accent)
+                    Theme.kicker("Dayline").foregroundStyle(Theme.accentText)
                     Text(entry.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                         .font(Theme.display(22)).foregroundStyle(Theme.ink)
                     if !entry.projectTags.isEmpty || entry.mood != nil {
@@ -199,6 +225,9 @@ struct EntryDetailView: View {
                               linkURLs: entry.linkURLs,
                               placeholders: entry.placeholders,
                               heading: "Scrapbook")
+                // `updatedAt` was stored on every save and shown nowhere.
+                Text("Last edited \(entry.updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
             .padding()
         }

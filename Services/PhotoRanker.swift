@@ -25,7 +25,11 @@ struct ScoredPhotoFeatures: Equatable {
 enum PhotoRanker {
     static func score(features: PhotoFeatures, transcript: String) -> ScoredPhotoFeatures {
         let matched = matchedLabels(features: features, transcript: transcript)
-        let semantic = min(Double(matched.count), 3.0) / 3.0 * 0.50
+        // Semantic credit is by DISTINCT transcript word matched, not by
+        // label count: one word ("pool") matching three labels ("pool",
+        // "swimming_pool", "water") used to score a full 0.50.
+        let distinctWords = matchedWords(features: features, transcript: transcript)
+        let semantic = min(Double(distinctWords.count), 3.0) / 3.0 * 0.50
         let aesthetic = ((features.aestheticScore ?? 0) + 1.0) / 2.0 * 0.30
         let people = features.faceCount > 0 ? 0.10 : 0.0
         let favorite = features.isFavorite ? 0.10 : 0.0
@@ -67,8 +71,14 @@ enum PhotoRanker {
                 return a.element.scored.score > b.element.scored.score
             }
             .map(\.offset)
-        let matchedSlots = min(matchedOffsets.count,
+        var matchedSlots = min(matchedOffsets.count,
                                max(1, Int(ceil(Double(limit) * matchedFraction))))
+        // At small limits the text pool could take every slot (2 matched,
+        // limit 2) and the two-pool rule quietly became one-pool. Keep at
+        // least one quality slot when unmatched items exist.
+        if limit >= 2, matchedSlots >= limit, matchedOffsets.count < items.count {
+            matchedSlots = limit - 1
+        }
         var chosen = Array(matchedOffsets.prefix(matchedSlots))
         if chosen.count < limit {
             let chosenSet = Set(chosen)
@@ -86,19 +96,61 @@ enum PhotoRanker {
         return chosen.map { items[$0].item }
     }
 
+    /// The distinct transcript words that at least one label matched.
+    /// Used for scoring (see `score`); a word counts once no matter how
+    /// many labels it matches.
+    static func matchedWords(features: PhotoFeatures, transcript: String) -> Set<String> {
+        let words = transcriptWords(transcript)
+        guard !words.isEmpty else { return [] }
+        var matched: Set<String> = []
+        for label in features.labels {
+            let labelWords = label.lowercased()
+                .replacingOccurrences(of: "_", with: " ")
+                .components(separatedBy: " ")
+            for lw in labelWords where words.contains(stem(lw)) {
+                matched.insert(stem(lw))
+            }
+        }
+        return matched
+    }
+
     static func matchedLabels(features: PhotoFeatures, transcript: String) -> [String] {
-        let words = Set(
-            transcript.lowercased()
-                .components(separatedBy: CharacterSet.alphanumerics.inverted)
-                .filter { $0.count > 2 }
-        )
+        let words = transcriptWords(transcript)
         guard !words.isEmpty else { return [] }
         return features.labels.filter { label in
             let labelWords = label.lowercased()
                 .replacingOccurrences(of: "_", with: " ")
                 .components(separatedBy: " ")
-            return labelWords.contains { words.contains($0) }
+            return labelWords.contains { words.contains(stem($0)) }
         }
+    }
+
+    private static func transcriptWords(_ transcript: String) -> Set<String> {
+        Set(
+            transcript.lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count > 2 }
+                .map { stem($0) }
+        )
+    }
+
+    /// Light stemming so "hike" matches a "hiking" label and "dogs"
+    /// matches "dog". Deliberately crude — Vision labels are short and
+    /// the cost of a false positive here is one photo slot.
+    static func stem(_ word: String) -> String {
+        var w = word
+        if w.count > 5, w.hasSuffix("ing") { w = String(w.dropLast(3)) }
+        else if w.count > 4, w.hasSuffix("ed") { w = String(w.dropLast(2)) }
+        else if w.count > 3, w.hasSuffix("s"), !w.hasSuffix("ss") { w = String(w.dropLast()) }
+        // A trailing "e" goes too, so "hike" and "hiking" share a root
+        // ("hik") instead of never matching each other.
+        if w.count > 3, w.hasSuffix("e") { w = String(w.dropLast()) }
+        // Collapse a doubled trailing consonant left by the strip
+        // ("swimming" -> "swimm" -> "swim", "stopped" -> "stop").
+        if w.count > 2, let last = w.last, w.dropLast().last == last, !"aeiou".contains(last) {
+            w = String(w.dropLast())
+        }
+        return w
     }
 }
 

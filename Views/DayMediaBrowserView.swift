@@ -57,7 +57,20 @@ struct DayMediaBrowserView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Use \(selection.count)") {
-                        let chosen = pool.filter { selection.contains($0.localIdentifier) }
+                        // The pool is only this day's ranked suggestions;
+                        // the selection can also hold ids the pool never
+                        // contained (a + pick from Today, a previous
+                        // entry's media). Those used to be silently
+                        // dropped here. Resolve them too.
+                        var chosen = pool.filter { selection.contains($0.localIdentifier) }
+                        let missing = selection.subtracting(chosen.map(\.localIdentifier))
+                        if !missing.isEmpty {
+                            let extra = AssetMediaLoader.fetchAssets(localIdentifiers: Array(missing))
+                            if extra.count < missing.count {
+                                Log.event("Browser", "day browser dropped \(missing.count - extra.count) selections (not found in library)")
+                            }
+                            chosen.append(contentsOf: extra)
+                        }
                         Log.event("Browser", "day browser confirmed \(chosen.count) of \(pool.count) items for \(date.formatted(date: .abbreviated, time: .omitted))")
                         onDone(chosen)
                         dismiss()
@@ -93,20 +106,23 @@ private struct BrowserTile: View {
         .aspectRatio(1, contentMode: .fill)
         .clipped()
         .overlay(alignment: .bottomLeading) {
-            HStack(spacing: 3) {
+            // Prints get a caption, not a pill badge: plain small-caps
+            // white text over the photo itself.
+            HStack(spacing: 4) {
                 if asset.mediaType == .video {
                     Image(systemName: "play.fill")
                     Text(formatDuration(asset.duration))
                 }
                 if asset.mediaSubtypes.contains(.photoLive) {
                     Image(systemName: "livephoto")
+                    Text("LIVE")
                 }
             }
-            .font(.caption2).foregroundStyle(.white)
-            .padding(3)
-            .background(.black.opacity(0.45))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .padding(4)
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.5)
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.7), radius: 2, x: 0, y: 1)
+            .padding(6)
             .opacity(asset.mediaType == .video || asset.mediaSubtypes.contains(.photoLive) ? 1 : 0)
         }
         .overlay(alignment: .topTrailing) {

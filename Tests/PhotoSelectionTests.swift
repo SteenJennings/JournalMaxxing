@@ -60,4 +60,42 @@ final class PhotoSelectionTests: XCTestCase {
         let picked = PhotoRanker.select(items: items, limit: 3)
         XCTAssertEqual(picked, ["M", "Q1", "Q2"])
     }
+
+    func testSelectBoundaryInputs() {
+        let items = [
+            item("M", labels: ["hike"], matched: ["hike"], aesthetic: 0.0),
+            item("Q", labels: [], matched: [], aesthetic: 0.5),
+        ]
+        XCTAssertTrue(PhotoRanker.select(items: [], limit: 3).isEmpty)
+        XCTAssertTrue(PhotoRanker.select(items: items, limit: 0).isEmpty)
+        // Limit larger than the pool returns everything, matched first.
+        XCTAssertEqual(PhotoRanker.select(items: items, limit: 10), ["M", "Q"])
+    }
+
+    /// At small limits the text pool must not take every slot: limit 2
+    /// with 2 matched items keeps one quality slot.
+    func testSmallLimitKeepsAQualitySlot() {
+        let items = [
+            item("A", labels: ["pool"], matched: ["pool"], aesthetic: -0.9),
+            item("B", labels: ["taco"], matched: ["taco"], aesthetic: -0.9),
+            item("C", labels: ["sunset"], matched: [], aesthetic: 1.0),
+        ]
+        let picked = PhotoRanker.select(items: items, limit: 2)
+        XCTAssertEqual(picked.count, 2)
+        XCTAssertTrue(picked.contains("C"), "one slot must go to the best-of-day photo")
+        XCTAssertEqual(picked.filter { $0 == "A" || $0 == "B" }.count, 1)
+    }
+
+    func testEqualQualityKeepsInputOrder() {
+        // For unmatched items, quality and score are the same function
+        // of the same inputs, so the score tie-break can never fire —
+        // equal-quality items keep their input order (Swift's sort is
+        // stable). Locked in so a future "fix" doesn't reorder the pool.
+        let tied = [
+            item("FIRST", labels: [], matched: [], aesthetic: 0.5),
+            item("SECOND", labels: [], matched: [], aesthetic: 0.5),
+        ]
+        let picked = PhotoRanker.select(items: tied, limit: 2)
+        XCTAssertEqual(picked, ["FIRST", "SECOND"])
+    }
 }

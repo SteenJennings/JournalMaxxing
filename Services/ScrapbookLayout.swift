@@ -16,11 +16,16 @@ enum ScrapbookLayout {
         let chunks = textChunks(text)
         var out: [ScrapbookBlock] = []
         var mi = 0
+        var photoIndex = 0
         func nextMedia() -> ScrapbookBlock? {
             guard mi < mediaIsVideo.count else { return nil }
-            let block = ScrapbookBlock.media(index: mi,
-                                             fullWidth: mediaIsVideo[mi],
-                                             alignRight: mi % 2 == 0)
+            let isVideo = mediaIsVideo[mi]
+            // Alignment parity runs on the PHOTO index, not the media
+            // index: a video in the middle used to flip every photo
+            // after it to the same side.
+            let alignRight = isVideo ? false : photoIndex % 2 == 0
+            if !isVideo { photoIndex += 1 }
+            let block = ScrapbookBlock.media(index: mi, fullWidth: isVideo, alignRight: alignRight)
             mi += 1
             return block
         }
@@ -28,9 +33,15 @@ enum ScrapbookLayout {
             while let m = nextMedia() { out.append(m) }
             return out
         }
+        // When media outnumber text chunks, distribute the surplus
+        // evenly between chunks instead of dumping them all at the end.
+        let perChunk = max(1, Int(ceil(Double(mediaIsVideo.count) / Double(chunks.count))))
         for chunk in chunks {
             out.append(.text(chunk))
-            if let m = nextMedia() { out.append(m) }
+            for _ in 0..<perChunk {
+                guard let m = nextMedia() else { break }
+                out.append(m)
+            }
         }
         while let m = nextMedia() { out.append(m) }
         return out
@@ -50,7 +61,12 @@ enum ScrapbookLayout {
         let sentences = single.components(separatedBy: ". ")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        guard sentences.count > 2 else { return [single] }
+        // A long paragraph with only one or two sentences used to stay
+        // one chunk — and peppering silently never happened. Split it
+        // into ~240-char word-boundary chunks instead.
+        guard sentences.count > 2 else { return splitLongText(single) }
+        // (splitLongText is the fallback for long paragraphs with too
+        // few sentences to group — see above.)
         let groupSize = max(2, Int(ceil(Double(sentences.count) / 4.0)))
         var chunks: [String] = []
         var i = 0
@@ -62,5 +78,19 @@ enum ScrapbookLayout {
             i += groupSize
         }
         return chunks
+    }
+
+    /// Split a long run of text into ~240-char chunks at word boundaries.
+    /// Used when a paragraph is long but has too few sentences to group.
+    static func splitLongText(_ text: String, maxChars: Int = 240) -> [String] {
+        var chunks: [String] = []
+        var current = ""
+        for word in text.split(separator: " ") {
+            if current.isEmpty { current = String(word) }
+            else if current.count + 1 + word.count <= maxChars { current += " " + word }
+            else { chunks.append(current); current = String(word) }
+        }
+        if !current.isEmpty { chunks.append(current) }
+        return chunks.isEmpty ? [text] : chunks
     }
 }

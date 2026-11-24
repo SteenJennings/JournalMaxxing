@@ -8,13 +8,13 @@ with field-test evidence before building anything.
 
 ## P0 — Protect the words
 
-### 1. Draft autosave + recording-interruption handling
-An unsaved dictation currently lives in memory only. If the app is
-killed, or a phone call interrupts recording (accepted limit: no
-`AVAudioSession` interruption handling), words can be lost. Autosave the
-in-progress draft to disk as you speak; restore it on launch; pause and
-resume cleanly around interruptions. A journal app that loses an entry
-once loses trust forever.
+### 1. Draft autosave + recording-interruption handling — DONE (swarm fix pass, 2026-11-23)
+Drafts persist per day (`DraftStore`, `dayline-drafts.json`), debounced
+as you type/dictate, restored when a day is opened, cleared on save.
+`AVAudioSession` interruption + route-loss handling stops recording
+cleanly with a message instead of leaving a frozen "Listening" state.
+The results stream dying mid-recording also stops cleanly now. (A
+manual "resume" is still a tap on the mic — no auto-resume.)
 
 ### 2. Backup nudge
 Everything is local by design and export is manual today (Data tab).
@@ -30,10 +30,12 @@ sitting. Dictate at 10am, again at lunch, again at night — each appends
 as a timestamped segment to the same day page, polished together or per
 segment.
 
-### 4. Chunked polish for long dictation
+### 4. Chunked polish for long dictation — DONE (swarm fix pass, 2026-11-23)
 Talk for five minutes and the Foundation Models ~4k-token context
 ceiling overflows; polish falls back to near-raw text (accepted limit).
-Polish in passes over chunks and stitch the results.
+Transcripts over ~8000 chars are now polished in sentence-boundary
+chunks (~6000 chars each) and stitched; a chunk that fails falls back
+to its own raw text plus keyword tags instead of losing the rest.
 
 ### 5. Quick capture
 Lock-screen / Home Screen widget or Action Button shortcut that starts
@@ -44,10 +46,13 @@ scoping this.)
 
 ## P2 — Make the page yours
 
-### 6. Reorder photos + pick your own highlight
+### 6. Reorder photos + pick your own highlight — PARTIAL (swarm fix pass, 2026-11-23)
 Media selection is hand-pickable today (day browser), but order is
 algorithmic and the highlight/cover is the algorithm's pick. Let Steen
-reorder and set the cover per day.
+reorder and set the cover per day. What the swarm pass did: a re-polish
+no longer clobbers an existing highlight (it keeps the stored cover
+when it's still in the media set), and saved media order is preserved
+across relaunch. Manual reorder + manual cover pick are still open.
 
 ### 7. Live Photo motion
 Live Photos show a badge only today. Playing the motion in the

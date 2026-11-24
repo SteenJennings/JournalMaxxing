@@ -129,8 +129,10 @@ struct AssetThumbnailView: View {
                     let p = AVPlayer(playerItem: item)
                     p.isMuted = true
                     // GIF-like behaviour the design calls for: autoplay
-                    // muted and loop. (Observer is per-cell and small in
-                    // count; revisit if scrapbooks get long.)
+                    // muted and loop. The observer is removed on
+                    // disappear — the old code leaked one per cell per
+                    // appearance, and a recycled cell could loop a
+                    // player it no longer owned.
                     loopObserver = NotificationCenter.default.addObserver(
                         forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
                         p.seek(to: .zero)
@@ -142,7 +144,11 @@ struct AssetThumbnailView: View {
             }
             image = await AssetMediaLoader.image(for: asset, targetSize: CGSize(width: 260, height: 200))
         }
-        .onDisappear { player?.pause() }
+        .onDisappear {
+            player?.pause()
+            if let loopObserver { NotificationCenter.default.removeObserver(loopObserver) }
+            self.loopObserver = nil
+        }
     }
 
     private func formatDuration(_ seconds: Double) -> String {
@@ -151,8 +157,11 @@ struct AssetThumbnailView: View {
     }
 }
 
-/// Real link preview: LPLinkView fed by LPMetadataProvider, with the old
-/// placeholder row as fallback while metadata loads or if a site blocks it.
+/// Link preview in the journal's own language: LPMetadataProvider still
+/// fetches the title, but the row is a journal card (ink tile, title,
+/// host) instead of LPLinkView's native chrome, which never matched the
+/// paper design. The fetch is cancelled if the view goes away — the old
+/// code let the provider's continuation leak on disappear.
 struct LinkPreviewView: View {
     var url: URL
     @State private var metadata: LPLinkMetadata?
@@ -160,8 +169,7 @@ struct LinkPreviewView: View {
     var body: some View {
         Group {
             if let metadata {
-                LPLinkViewRepresentable(metadata: metadata)
-                    .frame(height: 90)
+                LinkPreviewRow(url: url.absoluteString, title: metadata.title, host: url.host())
             } else {
                 LinkPreviewRow(url: url.absoluteString)
             }
@@ -177,19 +185,18 @@ struct LinkPreviewView: View {
     }
 }
 
-private struct LPLinkViewRepresentable: UIViewRepresentable {
-    var metadata: LPLinkMetadata
-    func makeUIView(context: Context) -> LPLinkView { LPLinkView(metadata: metadata) }
-    func updateUIView(_ uiView: LPLinkView, context: Context) { uiView.metadata = metadata }
-}
-
 struct LinkPreviewRow: View {
     var url: String
+    var title: String? = nil
+    var host: String? = nil
     var body: some View {
         HStack {
             RoundedRectangle(cornerRadius: 6).fill(Theme.ink.opacity(0.06)).frame(width: 40, height: 40)
                 .overlay { Image(systemName: "link").foregroundStyle(Theme.ink) }
-            VStack(alignment: .leading) { Text("Link Preview").font(.caption.bold()); Text(url).font(.caption2).foregroundStyle(.secondary) }
+            VStack(alignment: .leading) {
+                Text(title ?? "Link Preview").font(.caption.bold()).lineLimit(1)
+                Text(host ?? url).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
         }.journalCard(padding: 10)
     }
 }

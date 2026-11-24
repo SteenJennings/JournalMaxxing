@@ -8,12 +8,21 @@ palette in 2026.
 
 ## The rules (enforced in `Theme.swift`, not by taste alone)
 
-1. **One accent, used sparingly.** Rust is the mic (the one action),
-   the selected calendar day, and the favorite mark. Everything else is
-   ink on paper. If rust shows up in a fourth place, it is a bug.
+1. **One accent, used sparingly.** Rust marks the thing that matters
+   on the page: the mic (the one action), the selected calendar day,
+   the favorite mark, the mood word, the section kicker, the scrapbook
+   margin tick. Everything else is ink on paper. Rust never does two
+   jobs in one view, and never decorates chrome (tab bar, buttons,
+   navigation). The taste pass claimed "exactly three jobs" while the
+   shipped code used rust in six places — the rule now names the real
+   system instead of pretending. Rust has two values of one hue: the
+   accent (surfaces, icons) and `accentText`, darkened for small text
+   (bright rust on paper is ~3.3:1, failing for 11pt text).
 2. **Hairlines, not shadows.** Surfaces are separated by a 1px ink
    hairline, never a drop shadow — except the mic, the one element
-   allowed to float.
+   allowed to float, and the small dark shadow that keeps white
+   caption text legible over photos (text-over-photo is the one
+   exception, and it is for legibility, not depth).
 3. **Tags are words, not pills.** Tags and mood are set as plain
    lowercase text, separated by middots, under a small-caps label.
    No blue, no purple, no capsules anywhere in the app.
@@ -43,6 +52,21 @@ palette in 2026.
 - DataView's Form buttons stopped being system blue (`.tint(.ink)`).
 - The keyboard no longer covers Polish + Save: interactive dismissal
   plus a Done key (BACKLOG item 9, closed here).
+
+## What changed in the swarm fix pass (2026-11-23)
+
+- DataView stopped being a default iOS `Form` and joined the design
+  language (scroll sections, journal cards, hairline rows).
+- Trends got a loading state: tapping a tag clears the previous
+  insight, shows a spinner, and marks the selected row — it no longer
+  shows yesterday's insight while the new one loads.
+- The day browser's black pill badge became plain caption text, like
+  every other photo caption in the app.
+- The success label went from system green to ink.
+- Link previews are journal cards now (title + host), not LPLinkView's
+  native chrome.
+- Rust's text-safe shade (`accentText`) is used for kickers, the mood
+  word, and the selected-day disc, so small rust text reads at 11pt.
 
 ## What we refuse
 

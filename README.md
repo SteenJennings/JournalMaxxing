@@ -41,5 +41,5 @@ device test, 7-day expiry, troubleshooting — is in **TESTING.md**.
 - `Models/` — `DayEntry` (SwiftData)
 - `Services/` — PhotoService, VisionService, PhotoRanker, AssetMediaLoader, SpeechTranscriberService, `AI/Summarizer`
 - `Views/` — Today, Scrapbook, Timeline (Year), Trends
-- `Tests/` — Summarizer, PhotoRanker, LinkExtractor, PolishResponseParser, PhotoService
+- `Tests/` — Summarizer (tags, polish, parser, trends), PhotoRanker + PhotoSelection (two-pool, quality, stemming), ScrapbookLayout, Export (full-field round-trip), DiagnosticsLog (cap, persistence), PhotoService (ranked suggestions via injected fakes), YearGrouping, DraftStore
 - `.github/workflows/` — unsigned simulator build+test on every push (no Apple account needed)

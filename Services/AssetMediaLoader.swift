@@ -67,11 +67,15 @@ enum AssetMediaLoader {
         }
     }
 
+    /// Fetches by identifier and returns them in the REQUESTED order.
+    /// `PHAsset.fetchAssets(withLocalIdentifiers:)` does not guarantee
+    /// order, so a saved media list used to come back shuffled after a
+    /// relaunch — the scrapbook order changed every time the app opened.
     static func fetchAssets(localIdentifiers: [String]) -> [PHAsset] {
         guard !localIdentifiers.isEmpty else { return [] }
         let result = PHAsset.fetchAssets(withLocalIdentifiers: localIdentifiers, options: nil)
-        var out: [PHAsset] = []
-        result.enumerateObjects { a, _, _ in out.append(a) }
-        return out
+        var byId: [String: PHAsset] = [:]
+        result.enumerateObjects { a, _, _ in byId[a.localIdentifier] = a }
+        return localIdentifiers.compactMap { byId[$0] }
     }
 }

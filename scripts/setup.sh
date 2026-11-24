@@ -12,19 +12,20 @@ fi
 echo
 
 install_xcodegen_direct() {
-  # No Homebrew? Grab the official release binary from GitHub instead.
-  echo "Installing XcodeGen from the official GitHub release..."
-  local api="https://api.github.com/repos/yonaskolb/XcodeGen/releases/latest"
-  local url
-  url=$(curl -fsSL "$api" | grep -oE '"browser_download_url": *"[^"]*xcodegen\.zip"' | head -1 | sed -E 's/.*"([^"]*)"$/\1/')
-  if [[ -z "$url" ]]; then
-    echo "ERROR: could not resolve the XcodeGen release download."
+  # No Homebrew (or Homebrew failed)? Grab a pinned release binary from
+  # GitHub instead. Pinned to a known-good version: the old code took
+  # whatever `releases/latest` returned, unverified, and parsed the API
+  # JSON with grep.
+  local version="2.48.0"
+  local url="https://github.com/yonaskolb/XcodeGen/releases/download/${version}/xcodegen.zip"
+  echo "Installing XcodeGen ${version} from the official GitHub release..."
+  local tmp
+  tmp=$(mktemp -d)
+  if ! curl -fsSL --retry 3 "$url" -o "$tmp/xcodegen.zip"; then
+    echo "ERROR: could not download XcodeGen ${version}."
     echo "Fallback: install Homebrew from https://brew.sh, then re-run this script."
     exit 1
   fi
-  local tmp
-  tmp=$(mktemp -d)
-  curl -fsSL "$url" -o "$tmp/xcodegen.zip"
   unzip -q "$tmp/xcodegen.zip" -d "$tmp/unzipped"
   local bin
   bin=$(find "$tmp/unzipped" -name xcodegen -type f | head -1)
@@ -42,7 +43,9 @@ install_xcodegen_direct() {
 if ! command -v xcodegen &>/dev/null; then
   if command -v brew &>/dev/null; then
     echo "Installing XcodeGen via Homebrew..."
-    brew install xcodegen
+    # A failed brew install used to kill the script (set -e) instead of
+    # trying the direct-download path that exists for this case.
+    brew install xcodegen || install_xcodegen_direct
   else
     install_xcodegen_direct
   fi

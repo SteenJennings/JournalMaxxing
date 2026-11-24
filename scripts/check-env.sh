@@ -35,7 +35,21 @@ if command -v git &>/dev/null; then say "git" "$(git --version | cut -d' ' -f3)"
 if command -v gh &>/dev/null; then say "GitHub CLI" "present (optional)"; else say "GitHub CLI" "not installed (optional, for repo creation)"; fi
 
 echo "iPhone simulators available:"
-xcrun simctl list devices available 2>/dev/null | grep -i "iphone 1[67]" | head -6 | sed 's/^/  /'
+xcrun simctl list devices available 2>/dev/null | grep -i "iphone" | head -6 | sed 's/^/  /'
+# The listing used to be informational only — a machine with zero iPhone
+# sims printed READY and `make test` failed later with the destination
+# error. Count via simctl JSON (name grep misses future sim names).
+SIM_COUNT=$(xcrun simctl list devices available --json 2>/dev/null | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+print(sum(1 for devices in data.get('devices', {}).values() for d in devices if d.get('isAvailable') and 'iPhone' in d.get('name', '')))
+" 2>/dev/null || echo 0)
+if [[ "$SIM_COUNT" -eq 0 ]]; then
+  echo "  -> FAIL: no available iPhone simulator found (make test needs one)."
+  fail=1
+else
+  say "iPhone simulators" "$SIM_COUNT available"
+fi
 
 if [[ "$fail" -eq 0 ]]; then echo; echo "READY: run ./scripts/setup.sh, then make test"; else echo; echo "NOT READY: fix the FAIL items above."; fi
 exit $fail
