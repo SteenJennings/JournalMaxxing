@@ -59,12 +59,12 @@ The scrapbook preview appears after Polish + Save; ranked picks could
 shape up live as you write, so you're composing the page rather than
 approving it after the fact.
 
-## Pre-field-test fix (not an improvement)
+## Pre-field-test fix (done in the taste pass, 2026-11-23)
 
-### 9. Keyboard covering Polish + Save
-While editing, the keyboard can cover the Polish + Save buttons. Small
-pass (scroll/keyboard avoidance) before the phone field test so it
-doesn't annoy on-device.
+### 9. Keyboard covering Polish + Save — DONE
+While editing, the keyboard could cover the Polish + Save buttons.
+Fixed with interactive keyboard dismissal plus a Done key above the
+keyboard (TodayView, taste-pass branch).
 
 ## Deliberately NOT on this list
 

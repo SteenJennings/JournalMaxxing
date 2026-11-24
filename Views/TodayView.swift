@@ -26,6 +26,7 @@ struct TodayView: View {
     @State var mediaOverride: [PHAsset]?
     @State var isEditingPolished = false
     @State var preEditPolished = ""
+    @FocusState private var editorFocused: Bool
 
     /// The day this screen is working on. The calendar, backfill, day
     /// rollover, photo fetch, ranking, browser, and save all scope to it -
@@ -45,7 +46,8 @@ struct TodayView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Theme.kicker("Dayline").foregroundStyle(Theme.accent)
                         Text(selectedDate.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                             .font(Theme.display(24)).foregroundStyle(Theme.ink)
                         if isTodaySelected {
@@ -54,8 +56,9 @@ struct TodayView: View {
                             Button("Back to today") {
                                 selectedDate = Calendar.current.startOfDay(for: Date())
                             }
-                            .font(.caption).foregroundStyle(Theme.accent)
+                            .font(.caption).foregroundStyle(Theme.ink)
                         }
+                        Hairline().padding(.top, 4)
                     }
 
                     MonthCalendarView(selectedDate: $selectedDate, entryDays: entryDays)
@@ -63,6 +66,7 @@ struct TodayView: View {
                     TextField("Talk about your day...", text: $transcript, axis: .vertical)
                         .lineLimit(5...14)
                         .journalCard(padding: 12)
+                        .focused($editorFocused)
                         .onChange(of: transcriber.transcript) { _, newValue in
                             if transcriber.isRecording || !newValue.isEmpty { transcript = newValue }
                         }
@@ -115,7 +119,10 @@ struct TodayView: View {
                     Button { Task { await polishAndSave() } } label: {
                         Label(isPolishing ? "Polishing..." : "Polish + Save", systemImage: "wand.and.stars")
                             .frame(maxWidth: .infinity)
-                    }.buttonStyle(.borderedProminent).tint(Theme.accent)
+                    }
+                    // Ink, not rust: the save is a quiet, confident action.
+                    // The mic stays the one rust thing on the page.
+                    .buttonStyle(.borderedProminent).tint(Theme.ink)
                      .disabled(transcript.isEmpty || isPolishing)
 
                     if !photoService.todaysAssets.isEmpty {
@@ -126,13 +133,8 @@ struct TodayView: View {
                         }.buttonStyle(.bordered).tint(Theme.ink)
                     }
 
-                    if !tags.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack {
-                                ForEach(tags, id: \.self) { Text("#\($0)").font(.caption).padding(6).background(.blue.opacity(0.1)).clipShape(Capsule()) }
-                                if let mood { Text(mood).font(.caption).padding(6).background(.purple.opacity(0.1)).clipShape(Capsule()) }
-                            }
-                        }
+                    if !tags.isEmpty || mood != nil {
+                        TagLine(tags: tags, mood: mood)
                     }
 
                     if let savedMessage {
@@ -158,7 +160,7 @@ struct TodayView: View {
                                     Button("Save edits") {
                                         persistPageEdits()
                                         isEditingPolished = false
-                                    }.buttonStyle(.borderedProminent).tint(Theme.accent)
+                                    }.buttonStyle(.borderedProminent).tint(Theme.ink)
                                 }
                             }
                         } else {
@@ -176,11 +178,22 @@ struct TodayView: View {
                                 }
                                 Spacer()
                             }
-                            .buttonStyle(.plain).foregroundStyle(Theme.accent)
+                            .buttonStyle(.plain).foregroundStyle(Theme.ink)
                         }
                     }
                 }.padding()
-            }.navigationTitle("Today")
+            }
+            // The keyboard used to cover Polish + Save while editing
+            // (BACKLOG item 9): dismiss it interactively, and always
+            // offer a Done key above it.
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { editorFocused = false }
+                }
+            }
+            .navigationTitle("Today")
              .background(Theme.paper)
              .task {
                  photoService.requestPermissionAndFetch()
