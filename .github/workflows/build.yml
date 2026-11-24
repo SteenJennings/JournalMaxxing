@@ -96,13 +96,23 @@ jobs:
 
       - name: Upload simulator build to Appetize
         # The visual loop: every green main build lands on Appetize so a
-        # design check can run without a local build. Skipped until Steen
-        # adds APPETIZE_API_TOKEN in repo Settings > Secrets > Actions,
-        # so CI stays green without it. Push and manual runs only.
-        if: ${{ secrets.APPETIZE_API_TOKEN != '' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+        # design check can run without a local build. The guard lives in
+        # the script, not in an `if`: GitHub rejects `secrets` in an
+        # `if` condition, which turned main red on 2e9c352. With no
+        # secret (Steen adds APPETIZE_API_TOKEN in repo Settings >
+        # Secrets > Actions) the step exits 0 with a skip message, so
+        # CI stays green. Push and manual runs only.
         env:
           APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
         run: |
+          if [ -z "${APPETIZE_API_TOKEN:-}" ]; then
+            echo "APPETIZE_API_TOKEN not set — skipping Appetize upload."
+            exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" != "push" ] && [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "Not a push or manual run — skipping Appetize upload."
+            exit 0
+          fi
           APP_PATH=$(ls -td ~/Library/Developer/Xcode/DerivedData/Dayline-*/Build/Products/Debug-iphonesimulator/Dayline.app 2>/dev/null | head -1)
           [ -n "$APP_PATH" ] || { echo "Dayline.app not found under DerivedData"; exit 1; }
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Dayline.zip
