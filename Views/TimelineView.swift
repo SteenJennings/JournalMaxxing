@@ -64,7 +64,7 @@ struct TimelineView: View {
 
 /// One day in the index: the photo fills the top, then a serif date,
 /// the first line of the entry, and tags as plain words. Favorites get
-/// the rust star — the third and last job of the accent color.
+/// the ink star — the third and last job of the ink accent.
 struct YearCard: View {
     var entry: DayEntry
     var body: some View {

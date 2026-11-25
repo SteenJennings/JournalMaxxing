@@ -176,8 +176,8 @@ struct TodayView: View {
                         Label(isPolishing ? "Polishing..." : "Polish + Save", systemImage: "wand.and.stars")
                             .frame(maxWidth: .infinity)
                     }
-                    // Ink, not rust: the save is a quiet, confident action.
-                    // The mic stays the one rust thing on the page.
+                    // Ink only: the save is a quiet, confident action.
+                    // The mic is the one ink thing on the page.
                     .buttonStyle(.borderedProminent).tint(Theme.ink)
                     // Never polish mid-recording: the old code saved a
                     // partial entry, then live results kept overwriting

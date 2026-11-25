@@ -8,14 +8,14 @@ import UIKit
 /// pill tags), which is exactly the generic AI-app look. The rules that
 /// keep this from sliding back:
 ///
-/// 1. **One accent, used sparingly.** Rust marks the thing that
-///    matters on the page: the mic (the one action), the selected
-///    calendar day, the favorite mark, the mood word, the section
-///    kicker, the scrapbook margin tick. Everything else is ink on
-///    paper. Rust never does two jobs in one view, and never decorates
-///    chrome (tab bar, buttons, navigation). The shipped code used to
-///    claim "exactly three jobs" while using rust in six places — the
-///    rule now names the real system instead of pretending.
+/// 1. **Ink only, no accent color.** There is no accent hue. Ink
+///    marks the thing that matters on the page: the mic (the one
+///    action), the selected calendar day, the favorite mark, the mood
+///    word, the section kicker, the scrapbook margin tick. Everything
+///    is ink on paper. Ink never does two jobs in one view, and never
+///    decorates chrome (tab bar, buttons, navigation). The rust accent
+///    was cut 2026-11-25 (Steen: the orange-brown palette is overdone
+///    AI slop) — the layout and elements stayed, the color went.
 /// 2. **Hairlines, not shadows.** Surfaces are separated by a 1px ink
 ///    hairline, never a drop shadow — except the mic, the one element
 ///    allowed to float, and the small dark shadow that keeps white
@@ -44,12 +44,14 @@ enum Theme {
             ? UIColor(red: 0.93, green: 0.90, blue: 0.84, alpha: 1)
             : UIColor(red: 0.15, green: 0.13, blue: 0.11, alpha: 1)
     })
-    /// The one accent. See rule 1 above.
-    static let accent = Color(red: 0.79, green: 0.44, blue: 0.29) // rust
-    /// The same rust, darkened for small text. Bright rust on paper is
-    /// ~3.3:1 — fine for a big icon, failing for 11pt text. Kickers, the
-    /// mood word, and the selected-day disc use this.
-    static let accentText = Color(red: 0.60, green: 0.28, blue: 0.15)
+    /// Ink is the only "accent". There is no accent hue — see rule 1.
+    /// `accent` and `accentText` both resolve to ink so every call site
+    /// that used to say rust now says ink, with no color anywhere.
+    static let accent: Color = ink
+    /// Same as accent (ink). Kept as a separate name so the text-safe
+    /// call sites (kickers, mood word, selected-day disc) keep reading
+    /// as "the text-safe value of the accent" — which is just ink.
+    static let accentText: Color = ink
     /// The only separator color in the app.
     static let hairline = Color(uiColor: UIColor { t in
         t.userInterfaceStyle == .dark
@@ -95,7 +97,7 @@ extension View {
 }
 
 /// Tags and mood as words under a small-caps label — never pills.
-/// The mood, when present, is set in italic serif rust: it is the one
+/// The mood, when present, is set in italic serif ink: it is the one
 /// emotional word on the page, so it gets the one expressive treatment.
 struct TagLine: View {
     var tags: [String]

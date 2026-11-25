@@ -64,8 +64,8 @@ extension ScrapbookView {
 }
 
 /// A scrapbook card: paper surface, hairline edge, no shadow.
-/// Text chunks carry a short rust tick at the top — the margin mark of
-/// a journal, and the only place rust appears inside a page.
+/// Text chunks carry a short ink tick at the top — the margin mark of
+/// a journal, and the only place the accent appears inside a page.
 private struct ScrapbookCard<Content: View>: View {
     var ruled: Bool = false
     @ViewBuilder var content: Content

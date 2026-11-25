@@ -34,8 +34,8 @@ struct ContentView: View {
             TrendsView().tabItem { Label("Trends", systemImage: "chart.line.uptrend.xyaxis") }
             DataView().tabItem { Label("Data", systemImage: "externaldrive") }
         }
-        // Ink, not rust: the tab bar is chrome, and rust is reserved
-        // for the mic, the selected day, and the favorite mark.
+        // Ink only: the tab bar is chrome, and ink marks the thing
+        // that matters (mic, selected day, favorite mark).
         .tint(Theme.ink)
     }
 }

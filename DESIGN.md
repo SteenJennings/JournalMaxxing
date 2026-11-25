@@ -8,16 +8,15 @@ palette in 2026.
 
 ## The rules (enforced in `Theme.swift`, not by taste alone)
 
-1. **One accent, used sparingly.** Rust marks the thing that matters
-   on the page: the mic (the one action), the selected calendar day,
-   the favorite mark, the mood word, the section kicker, the scrapbook
-   margin tick. Everything else is ink on paper. Rust never does two
-   jobs in one view, and never decorates chrome (tab bar, buttons,
-   navigation). The taste pass claimed "exactly three jobs" while the
-   shipped code used rust in six places — the rule now names the real
-   system instead of pretending. Rust has two values of one hue: the
-   accent (surfaces, icons) and `accentText`, darkened for small text
-   (bright rust on paper is ~3.3:1, failing for 11pt text).
+1. **Ink only, no accent color.** There is no accent hue. Ink marks
+   the thing that matters on the page: the mic (the one action), the
+   selected calendar day, the favorite mark, the mood word, the section
+   kicker, the scrapbook margin tick. Everything is ink on paper. Ink
+   never does two jobs in one view, and never decorates chrome (tab
+   bar, buttons, navigation). The rust accent was cut 2026-11-25 —
+   Steen called the orange-brown palette overdone AI slop; the layout
+   and elements stayed, the color went. `accent` and `accentText` both
+   resolve to `ink`, so the call sites keep reading the same.
 2. **Hairlines, not shadows.** Surfaces are separated by a 1px ink
    hairline, never a drop shadow — except the mic, the one element
    allowed to float, and the small dark shadow that keeps white
@@ -36,16 +35,16 @@ palette in 2026.
 - `journalCard` went from 16pt radius + shadow to 12pt radius +
   hairline, no shadow. One card style, everywhere.
 - The tab bar and the Polish + Save button went from rust to ink;
-  the mic kept rust.
+  the mic kept rust (later cut to ink with the rest of the accent).
 - Tag pills (blue/purple capsules) are gone in Today, Year, and the
   mood display; `TagLine` replaces them everywhere. Mood is the one
-  expressive word on a page: italic serif, rust.
+  expressive word on a page: italic serif, ink.
 - The Year grid is now a month-grouped index (serif month headers,
   day counts, newest first) instead of an undifferentiated grid.
   Favorites finally exist as a feature: `isFavorite` had been an
   orphaned model field since the scaffold — it now has a star toggle
-  in EntryDetail and a rust star on Year cards.
-- Scrapbook text chunks carry a short rust tick (the margin mark of a
+  in EntryDetail and an ink star on Year cards.
+- Scrapbook text chunks carry a short ink tick (the margin mark of a
   journal); media badges became plain caption text.
 - Trends stopped being a default iOS `List` and joined the design
   language (scroll sections, hairline rows, tabular counts).
@@ -65,8 +64,20 @@ palette in 2026.
 - The success label went from system green to ink.
 - Link previews are journal cards now (title + host), not LPLinkView's
   native chrome.
-- Rust's text-safe shade (`accentText`) is used for kickers, the mood
-  word, and the selected-day disc, so small rust text reads at 11pt.
+- Ink's text-safe shade (`accentText`, which is just ink now) is used
+  for kickers, the mood word, and the selected-day disc.
+
+## What changed in the ink-only palette swap (2026-11-25)
+
+- Steen picked Ink only: `accent` and `accentText` in `Theme.swift`
+  both resolve to `ink`. The mic, selected day, favorite mark, mood
+  word, kicker, and margin tick are all ink now — no hue anywhere.
+- The app icon's rust circle became ink (same circle + lines, no
+  color). The layout and elements are unchanged; only the color went.
+- The Year card's date + preview text were checked against a real
+  screenshot and are on light paper, not over the photo — the dark
+  area in the shot is the sunset test image's own dark bottom edge,
+  not a background behind the text. No legibility defect there.
 
 ## What we refuse
 
