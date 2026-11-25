@@ -166,7 +166,18 @@ class PhotoService: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
     /// extract Vision features, score against the transcript with PhotoRanker.
     /// Analyzes in parallel (4 at a time) with an in-memory feature cache,
     /// and respects task cancellation.
+    ///
+    /// DISABLED (experiment, 2026-11-24): polish+save dies on Appetize
+    /// whenever the day has a photo to rank, and disabling the aesthetics
+    /// request alone did NOT fix it (probe 2026-11-24 19:07). Bypassing the
+    /// whole ranking here to test whether the crash is in the ranking
+    /// pipeline (Vision/thumbnails) at all, or in the save with non-empty
+    /// picks. Returning [] makes polishAndSave fall back to suggest(for:)
+    /// (the day's first 5 assets), so the save still gets picks but no
+    /// Vision and no thumbnail fetch run. Revert this if the probe shows
+    /// the crash is in the save, not the ranking.
     func rankedSuggest(for transcript: String, limit: Int = 5) async -> [PHAsset] {
+        return []
         let all = todaysAssets.map {
             RankCandidate(localIdentifier: $0.localIdentifier,
                           isFavorite: $0.isFavorite,
