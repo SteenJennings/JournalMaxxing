@@ -23,7 +23,16 @@ actor VisionService {
 
     /// Aesthetic quality in -1...1 plus whether Vision classifies the image
     /// as utility (screenshot / receipt / document). Used for ranking.
+    ///
+    /// DISABLED (experiment, 2026-11-24): polish+save dies on Appetize
+    /// whenever the day has a photo to rank, and the aesthetics request is
+    /// the least battle-tested of the three Vision passes (iOS 17+, distinct
+    /// model). Bypassing it to test whether it is the crash. Ranking
+    /// degrades gracefully: aestheticScore nil -> neutral 0.15, and the
+    /// utility penalty never applies while this is off. Re-enable (delete
+    /// the early return) if the probe shows the crash is elsewhere.
     func aesthetics(for image: UIImage) async -> (score: Double, isUtility: Bool)? {
+        return nil
         guard let cg = image.cgImage else { return nil }
         return await withCheckedContinuation { cont in
             let req = VNCalculateImageAestheticsScoresRequest { req, _ in
