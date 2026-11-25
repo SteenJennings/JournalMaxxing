@@ -51,8 +51,8 @@ the code, repeat. One pass is ~1–2 minutes of Appetize time.
    - **CI:** a guarded step in `.github/workflows/build.yml` uploads
      each green main build (zipped simulator .app, `--wait` for the
      build id). The step is skipped while `APPETIZE_API_TOKEN` is
-     absent, so CI stays green without it. Steen adds the secret in
-     repo Settings → Secrets → Actions, once.
+     absent, so CI stays green without it. The secret is set (Nov 24,
+     2026), so every push to main now uploads the build.
 4. iOS uploads must be **simulator .app bundles, zipped** — `.ipa`
    files are not supported. ARM simulator builds preferred.
 
