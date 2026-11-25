@@ -66,6 +66,16 @@ START_JSON="$("$APPETIZE" session start "$DEVICE" --target "$BUILD_ID" --device-
 SESSION_ID="$(echo "$START_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sessionId"])')"
 echo "Session $SESSION_ID — screenshots go to $OUT"
 
+# Fresh Appetize devices show the Photos permission dialog on first
+# launch, covering the Today tab (which is why the first inspect for
+# 'Today' found nothing). Grant full access so the scrapbook has the
+# device's photos to rank; the dialog is absent on a re-run only if the
+# device persisted the grant, so this stays conditional.
+if "$APPETIZE" inspect --select-text 'Allow Full Access' --timeout 8000 --json --quiet >/dev/null 2>&1; then
+    "$APPETIZE" tap --select-text 'Allow Full Access' --json --quiet >/dev/null
+    echo "granted photo access"
+fi
+
 # Wait for the app to land on Today, then shoot each tab. A tap that
 # "succeeds" only means the gesture was delivered, so every shot is
 # preceded by an inspect that waits for the tab's label to be present.
